@@ -655,6 +655,10 @@ body {
       <input class="fi" id="fTec" placeholder="Nombre del técnico" autocomplete="off">
     </div>
     <div class="fg">
+      <label class="fl">Aceite utilizado</label>
+      <input class="fi" id="fAceite" placeholder="ej: 7L SAE 5W-30 Shell Rimula R4" autocomplete="off">
+    </div>
+    <div class="fg">
       <label class="fl">Observaciones</label>
       <textarea class="fta" id="fObs" placeholder="Fallas reportadas, novedades de seguridad, síntomas..."></textarea>
     </div>
@@ -956,6 +960,9 @@ function renderTurnos(c) {
     <div class="searchbar">
       <span class="searchbar-icon">🔍</span>
       <input placeholder="Buscar patente, área, técnico..." value="${srch}" oninput="srch=this.value;renderTurnos(document.getElementById('content'))">
+    </div>
+    <div style="padding:0 16px 10px;">
+      <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
     </div>
     `;
 
@@ -1463,7 +1470,7 @@ function calcKm() {
 }
 
 function openAdd() {
-  ['fDom','fKmA','fKmU','fTec','fObs'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['fDom','fKmA','fKmU','fTec','fAceite','fObs'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('fDomInfo').textContent = '';
   initFlotaDatalist();
   document.getElementById('fPM').value   = '';
@@ -1518,6 +1525,7 @@ function saveEv() {
     pm,
     area,
     tec:   document.getElementById('fTec').value.trim(),
+    aceite: document.getElementById('fAceite').value.trim(),
     obs:   document.getElementById('fObs').value.trim(),
     checklist
   };
@@ -1591,6 +1599,7 @@ function openDet(id) {
       <div class="det-item"><span class="det-lbl">Fecha</span><span class="det-val" style="font-size:13px;">${fmtDate(e.fecha)}</span></div>
       <div class="det-item"><span class="det-lbl">Área</span><span class="det-val" style="font-size:13px;">${e.area}</span></div>
       <div class="det-item"><span class="det-lbl">Técnico</span><span class="det-val" style="font-size:13px;">${e.tec || '—'}</span></div>
+      <div class="det-item"><span class="det-lbl">Aceite utilizado</span><span class="det-val" style="font-size:13px;">${e.aceite || '—'}</span></div>
     </div>
     ${kmBar}
     <div style="font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Tareas incluidas</div>
@@ -1641,6 +1650,146 @@ if ('serviceWorker' in navigator) {
 // ── URL SHORTCUT ───────────────────────────────────────────
 if (new URLSearchParams(location.search).get('action') === 'new') {
   window.addEventListener('load', () => setTimeout(openAdd, 400));
+}
+
+// ── INFORME EXCEL ──────────────────────────────────────────
+function openInformeModal() {
+  const today = new Date().toISOString().slice(0,10);
+  const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const modal = document.createElement('div');
+  modal.id = 'informeModal';
+  modal.style = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--card);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-size:17px;font-weight:700;">📊 Generar informe Excel</span>
+        <button onclick="document.getElementById('informeModal').remove()" style="background:none;border:none;font-size:20px;color:var(--text2);">✕</button>
+      </div>
+      <div class="frow2">
+        <div class="fg"><label class="fl">Fecha desde</label><input class="fi" type="date" id="iDesde" value="${firstDay}"></div>
+        <div class="fg"><label class="fl">Fecha hasta</label><input class="fi" type="date" id="iHasta" value="${today}"></div>
+      </div>
+      <div class="fg">
+        <label class="fl">Filtrar por patente (opcional)</label>
+        <input class="fi" id="iPat" placeholder="Dejar vacío para todas" autocomplete="off" list="flotaList">
+      </div>
+      <div class="fg">
+        <label class="fl">Filtrar por área (opcional)</label>
+        <select class="fs" id="iArea">
+          <option value="">Todas las áreas</option>
+          <option>Operaciones Mina</option><option>Logística</option>
+          <option>Procesamiento</option><option>Mantenimiento</option>
+          <option>EHS</option><option>Geología</option>
+          <option>Supply Chain</option><option>RRHH</option>
+          <option>Gerencia</option><option>Seguridad</option>
+          <option>Salud / Ambiente</option><option>IT</option>
+          <option>Edilicio</option><option>Transporte</option><option>General</option>
+        </select>
+      </div>
+      <button onclick="generarInforme()" style="width:100%;padding:12px;border-radius:10px;background:var(--red);color:white;border:none;font-weight:700;font-size:15px;margin-top:8px;">⬇️ Descargar Excel</button>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function generarInforme() {
+  const desde = document.getElementById('iDesde').value;
+  const hasta = document.getElementById('iHasta').value;
+  const patFiltro = (document.getElementById('iPat').value || '').trim().toUpperCase();
+  const areaFiltro = document.getElementById('iArea').value;
+
+  let lista = events.filter(e => e.fecha >= desde && e.fecha <= hasta);
+  if (patFiltro) lista = lista.filter(e => e.dom.toUpperCase().includes(patFiltro));
+  if (areaFiltro) lista = lista.filter(e => e.area === areaFiltro);
+  lista.sort((a,b) => a.fecha.localeCompare(b.fecha));
+
+  if (!lista.length) { alert('No hay turnos en el período seleccionado con esos filtros.'); return; }
+
+  // Hoja 1: Resumen de turnos
+  const filasTurnos = lista.map(e => {
+    const repNombres = (e.checklist || [])
+      .filter(t => t.repuestos && t.repuestos.length)
+      .flatMap(t => t.repuestos.map(rid => {
+        const r = repuestosData.find(x => x.id === rid);
+        return r ? r.desc : rid;
+      })).join(', ');
+    const costoTotal = (e.checklist || []).reduce((s,t) => s + (t.costo||0), 0);
+    const tareasCompletas = (e.checklist || []).filter(t => t.done).length;
+    const totalTareas = (e.checklist || []).length;
+    return {
+      'Fecha': e.fecha,
+      'Patente': e.dom,
+      'Vehículo': e.vehiculo || '',
+      'Año': e.año || '',
+      'PM': PMS[e.pm] ? PMS[e.pm].label : e.pm,
+      'Área': e.area,
+      'Técnico': e.tec || '',
+      'Aceite utilizado': e.aceite || '',
+      'Km actuales': e.kmA,
+      'Km último PM': e.kmU,
+      'Diferencia km': e.kmA - e.kmU,
+      'Tareas completadas': `${tareasCompletas}/${totalTareas}`,
+      'Repuestos utilizados': repNombres,
+      'Costo total estimado ($)': costoTotal,
+      'Observaciones': e.obs || ''
+    };
+  });
+
+  // Hoja 2: Detalle de repuestos por turno
+  const filasRepuestos = [];
+  lista.forEach(e => {
+    if (!e.checklist) return;
+    e.checklist.forEach(t => {
+      if (!t.repuestos || !t.repuestos.length) return;
+      t.repuestos.forEach(rid => {
+        const r = repuestosData.find(x => x.id === rid);
+        filasRepuestos.push({
+          'Fecha': e.fecha,
+          'Patente': e.dom,
+          'Vehículo': e.vehiculo || '',
+          'PM': PMS[e.pm] ? PMS[e.pm].label : e.pm,
+          'Técnico': e.tec || '',
+          'Tarea': t.sys,
+          'PN SAP': r ? r.pnSap : '',
+          'PN Fabricante': r ? r.pnFab : '',
+          'Repuesto': r ? r.desc : rid,
+          'Precio unitario ($)': r ? r.precio : 0,
+          'Completada': t.done ? 'Sí' : 'No'
+        });
+      });
+    });
+  });
+
+  // Hoja 3: Resumen de aceites
+  const filasAceites = lista
+    .filter(e => e.aceite)
+    .map(e => ({
+      'Fecha': e.fecha,
+      'Patente': e.dom,
+      'Vehículo': e.vehiculo || '',
+      'PM': PMS[e.pm] ? PMS[e.pm].label : e.pm,
+      'Área': e.area,
+      'Técnico': e.tec || '',
+      'Aceite utilizado': e.aceite,
+      'Km actuales': e.kmA
+    }));
+
+  const wb = XLSX.utils.book_new();
+
+  const ws1 = XLSX.utils.json_to_sheet(filasTurnos);
+  XLSX.utils.book_append_sheet(wb, ws1, 'Turnos');
+
+  if (filasRepuestos.length) {
+    const ws2 = XLSX.utils.json_to_sheet(filasRepuestos);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Repuestos');
+  }
+  if (filasAceites.length) {
+    const ws3 = XLSX.utils.json_to_sheet(filasAceites);
+    XLSX.utils.book_append_sheet(wb, ws3, 'Aceites');
+  }
+
+  const filename = `Informe_Vicuna_${desde}_${hasta}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  document.getElementById('informeModal').remove();
 }
 
 // ── INIT ───────────────────────────────────────────────────
