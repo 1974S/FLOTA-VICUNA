@@ -13,6 +13,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <title>Flota Vicuña</title>
 <style>
 /* ─── VARIABLES ───────────────────────────── */
@@ -928,6 +930,7 @@ function renderInicio(c) {
   }
 
   html += `</div>`;
+  html += (typeof otRenderGraficos==='function'?otRenderGraficos():'');
   c.innerHTML = html;
   bindCards(c);
   c.querySelector('#mc-prev')?.addEventListener('click', () => { vDate = new Date(vDate.getFullYear(), vDate.getMonth()-1, 1); render(); });
@@ -962,6 +965,7 @@ function renderTurnos(c) {
       <input placeholder="Buscar patente, área, técnico..." value="${srch}" oninput="srch=this.value;renderTurnos(document.getElementById('content'))">
     </div>
     <div style="padding:0 16px 10px;">
+      <button onclick="openImportModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📥 Importar órdenes de trabajo (PDF)</button>
       <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
     </div>
     `;
@@ -1013,7 +1017,7 @@ function renderFlota(c) {
     const isToyota = v.vehiculo.includes('TOYOTA') || v.vehiculo.includes('COROLLA');
     const icon = isToyota ? '🚙' : '🚗';
     html += `
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
+      <div onclick="otHistorial('${v.patente}')" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;">
         <div style="font-size:24px;width:36px;text-align:center;">${icon}</div>
         <div style="flex:1;min-width:0;">
           <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:0.03em;">${v.patente}</div>
@@ -1794,6 +1798,359 @@ function generarInforme() {
 
 // ── INIT ───────────────────────────────────────────────────
 render();
+
+/* ===== MÓDULO OT (inyectado) ===== */
+/* ==================== MÓDULO ÓRDENES DE TRABAJO (OT) ====================
+   Lee PDFs de Hoja de Explicación (Freddy), extrae datos, guarda por unidad
+   en Firebase, genera turnos, alimenta historial e Inicio (gráficos).
+   ======================================================================== */
+
+let otData = {};        // { patente: [ {ot}, {ot}, ... ] }
+let otPreview = [];     // OT parseadas esperando confirmación
+const OT_KEY = 'tf_vicuna_ot_v1';
+
+/* ---------- Carga / persistencia ---------- */
+function otLoadLocal(){
+  try { const r = localStorage.getItem(OT_KEY); if(r) otData = JSON.parse(r); } catch(e){}
+}
+function otSaveLocal(){
+  try { localStorage.setItem(OT_KEY, JSON.stringify(otData)); } catch(e){}
+}
+function otBindFirebase(){
+  try {
+    db.ref('ordenes_trabajo').on('value', snap => {
+      const v = snap.val();
+      if(v){ otData = v; otSaveLocal(); if(curTab==='inicio'||curTab==='flota') render(); }
+    });
+  } catch(e){ console.warn('OT firebase', e); }
+}
+function otPushFirebase(){
+  try { db.ref('ordenes_trabajo').set(otData); } catch(e){ console.warn(e); }
+}
+
+/* ---------- Utilidades ---------- */
+function otNum(s){
+  if(s==null) return null;
+  s = String(s).replace('$','').replace('USD','').replace(/\./g,'').replace(',','.').trim();
+  const n = parseFloat(s); return isNaN(n)?null:n;
+}
+function otFechaISO(f){ // "07/07/26" -> "2026-07-07"
+  const m = /(\d{2})\/(\d{2})\/(\d{2})/.exec(f||''); if(!m) return null;
+  return `20${m[3]}-${m[2]}-${m[1]}`;
+}
+
+/* ---------- Parser (portado del Python validado) ---------- */
+function otParseText(txt, archivo){
+  const lines = txt.split('\n').map(l=>l.trim());
+  const d = { archivo };
+  let m;
+  m = /N°\s*(\d+)/.exec(txt); d.nro = m?m[1]:null;
+
+  lines.forEach(l=>{
+    if(l.indexOf('Patente')>-1){
+      m=/Patente\s+([A-Z0-9]+)\s+Año\s+(\d+)/.exec(l);
+      if(m){ d.patente=m[1]; d.anio=m[2]; }
+    }
+    if(l.indexOf('Modelo')>-1 && l.indexOf('Km')>-1){
+      m=/Modelo\s+(.+?)\s+Km\s+(\d+)/.exec(l);
+      if(m){ d.modelo=m[1].trim(); d.km=parseInt(m[2]); }
+      else { m=/Modelo\s+Km\s+(\d+)/.exec(l); if(m){ d.km=parseInt(m[1]); } }
+    }
+    // km suelto en línea "... Km 65837" (modelo largo empuja la línea)
+    if(!d.km && /\bKm\s+\d+/.test(l) && l.indexOf('Modelo')===-1 && l.indexOf('KILÓMETRO')===-1){
+      m=/\bKm\s+(\d+)/.exec(l); if(m) d.km=parseInt(m[1]);
+    }
+    if(l.indexOf('Recepción')===0){
+      m=/Fecha\s*(\d{2}\/\d{2}\/\d{2})/.exec(l);
+      if(m){ d.fecha=m[1]; }
+    }
+    if(l.indexOf('Asesor de Servicio')>-1) d.asesor=l.split('Asesor de Servicio').pop().trim();
+    if(l.indexOf('VIN')===0){ m=/Sector\s+(\w+)/.exec(l); d.sector=m?m[1]:null; }
+  });
+
+  d.tipo = txt.indexOf('SERVICIO DE PM')>-1 ? 'PM'
+         : txt.indexOf('REPARACIONES VARIAS')>-1 ? 'Correctivo'
+         : /\bVENTA\b/.test(txt) ? 'Venta' : 'Otro';
+
+  // Repuestos
+  const rep=[]; let ini=null, fin=null;
+  for(let i=0;i<lines.length;i++){
+    if(lines[i].indexOf('Artículo')===0 && lines[i].indexOf('Descripción')>-1 && ini===null) ini=i+1;
+    if(ini!==null && lines[i].indexOf('Total')===0 && fin===null){ fin=i; break; }
+  }
+  if(ini!==null && fin!==null){
+    const bloque = lines.slice(ini,fin);
+    for(let j=0;j<bloque.length;j++){
+      const l=bloque[j];
+      let mm=/^([A-Z0-9]{5,})\s+(.+?)\s+(\d+)\s+\$\s*([\d.,]+)\s+USD\s*([\d.,]+)$/.exec(l);
+      if(mm){ rep.push({codigo:mm[1],desc:mm[2].trim(),cant:parseInt(mm[3]),pesos:otNum(mm[4]),usd:otNum(mm[5])}); continue; }
+      let m2=/^([A-Z0-9]{5,})\s+(\d+)\s+\$\s*([\d.,]+)\s+USD\s*([\d.,]+)$/.exec(l);
+      if(m2){ const desc=j>0?bloque[j-1]:''; rep.push({codigo:m2[1],desc:desc.trim(),cant:parseInt(m2[2]),pesos:otNum(m2[3]),usd:otNum(m2[4])}); }
+    }
+  }
+  d.repuestos=rep;
+
+  // Trabajos / mano de obra
+  const trab=[]; let ti=null;
+  for(let i=0;i<lines.length;i++){
+    if((lines[i].indexOf('Trabajos')===0 || lines[i]==='Trabajos y Otros') && ti===null) ti=i;
+  }
+  if(ti!==null){
+    for(let i=ti;i<lines.length;i++){
+      const l=lines[i];
+      if(l.indexOf('Total trabajos')===0) break;
+      const mm=/^(.+?)\s+\$\s*([\d.,]+)\s+USD\s*([\d.,]+)$/.exec(l);
+      if(mm && l.indexOf('Descripción')===-1) trab.push({desc:mm[1].trim(),pesos:otNum(mm[2]),usd:otNum(mm[3])});
+    }
+  }
+  d.trabajos=trab;
+
+  lines.forEach(l=>{
+    if(l.indexOf('KM:')===0){ m=/KM:\s*(\d+)/.exec(l); if(m) d.km_comentario=parseInt(m[1]); }
+    if(l.indexOf('TEC:')===0) d.tecnico=l.replace('TEC:','').trim();
+    if(l.indexOf('SUP:')===0) d.supervisor=l.replace('SUP:','').trim();
+    if(l.indexOf('PRECIO TOTAL')===0){ m=/\$\s*([\d.,]+)\s+USD\s*([\d.,]+)/.exec(l); if(m){ d.total_pesos=otNum(m[1]); d.total_usd=otNum(m[2]); } }
+  });
+
+  d.km_efectivo = d.km || d.km_comentario || null;
+  d.fecha_iso = otFechaISO(d.fecha);
+  d.id = (d.nro?('OT'+d.nro):'')+'_'+(d.patente||'SP')+'_'+(d.fecha_iso||'');
+  return d;
+}
+
+/* ---------- Lectura de PDF ---------- */
+async function otReadPdf(file){
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+  let full='';
+  for(let p=1;p<=pdf.numPages;p++){
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    // reconstruir líneas por posición Y (PDF.js entrega items sueltos)
+    const items = tc.items.map(it=>({str:it.str, x:it.transform[4], y:Math.round(it.transform[5])}));
+    const rows={};
+    items.forEach(it=>{ (rows[it.y]=rows[it.y]||[]).push(it); });
+    const ys = Object.keys(rows).map(Number).sort((a,b)=>b-a);
+    ys.forEach(y=>{
+      const line = rows[y].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();
+      if(line) full += line+'\n';
+    });
+  }
+  return otParseText(full, file.name);
+}
+
+/* ---------- Modal de importación ---------- */
+function openImportModal(){
+  const modal = document.createElement('div');
+  modal.id='importModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+  modal.innerHTML=`
+    <div style="background:var(--bg);width:100%;max-width:640px;max-height:92vh;border-radius:18px 18px 0 0;overflow-y:auto;padding:18px 16px 30px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <span style="font-size:17px;font-weight:700;">📥 Importar órdenes de trabajo</span>
+        <button onclick="document.getElementById('importModal').remove()" style="background:none;border:none;font-size:22px;color:var(--text2);">✕</button>
+      </div>
+      <label style="display:block;border:2px dashed var(--border);border-radius:12px;padding:22px;text-align:center;cursor:pointer;color:var(--text2);">
+        <input type="file" accept="application/pdf" multiple style="display:none;" onchange="otHandleFiles(this.files)">
+        <div style="font-size:32px;">📄</div>
+        <div style="font-weight:600;color:var(--text);margin-top:6px;">Elegí los PDF de las OT</div>
+        <div style="font-size:12px;margin-top:2px;">Podés seleccionar varios a la vez</div>
+      </label>
+      <div id="otPreviewBox" style="margin-top:14px;"></div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function otHandleFiles(files){
+  const box = document.getElementById('otPreviewBox');
+  box.innerHTML = `<div style="text-align:center;color:var(--text2);padding:16px;">Leyendo ${files.length} archivo(s)… ⏳</div>`;
+  otPreview=[];
+  for(const f of files){
+    try { otPreview.push(await otReadPdf(f)); }
+    catch(e){ otPreview.push({archivo:f.name, ERROR:String(e)}); }
+  }
+  otRenderPreview();
+}
+
+function otRenderPreview(){
+  const box = document.getElementById('otPreviewBox');
+  const ok = otPreview.filter(o=>!o.ERROR && o.patente);
+  const venta = otPreview.filter(o=>!o.ERROR && !o.patente && o.tipo==='Venta');
+  const bad = otPreview.filter(o=>o.ERROR || (!o.patente && o.tipo!=='Venta'));
+  let html = `<div style="font-size:13px;color:var(--text2);margin-bottom:8px;">Detectadas <b style="color:var(--text);">${ok.length}</b> OT de unidad${venta.length?` · ${venta.length} de venta/stock`:''}${bad.length?` · ${bad.length} con problemas`:''}</div>`;
+  otPreview.forEach((o,i)=>{
+    if(o.ERROR){
+      html += `<div style="background:#FF3B3010;border:1px solid #FF3B3040;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#FF3B30;">⚠️ ${o.archivo}: no se pudo leer</div>`;
+      return;
+    }
+    if(!o.patente && o.tipo==='Venta'){
+      const nrep=(o.repuestos||[]).length;
+      html += `<div style="background:#8E8E9310;border:1px solid #8E8E9330;border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;"><span style="background:#8E8E9320;color:#8E8E93;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">Venta / stock</span><span style="font-size:11px;color:var(--text3);margin-left:auto;">OT ${o.nro||'?'} · ${o.fecha||'?'}</span></div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px;">Sin unidad asignada · ${nrep} ítem${nrep!==1?'s':''} · No se suma a historial de unidad</div></div>`;
+      return;
+    }
+    if(!o.patente){
+      html += `<div style="background:#FF3B3010;border:1px solid #FF3B3040;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#FF3B30;">⚠️ ${o.archivo}: sin patente detectada</div>`;
+      return;
+    }
+    const nrep=(o.repuestos||[]).length, ntr=(o.trabajos||[]).length;
+    const tipoColor = o.tipo==='PM'?'#34C759':(o.tipo==='Correctivo'?'#FF9500':'#8E8E93');
+    html += `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-weight:700;letter-spacing:.03em;">${o.patente}</span>
+          <span style="background:${tipoColor}20;color:${tipoColor};border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">${o.tipo}</span>
+          <span style="font-size:11px;color:var(--text3);margin-left:auto;">OT ${o.nro||'?'} · ${o.fecha||'?'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-top:4px;">
+          Km ${o.km_efectivo?.toLocaleString('es-AR')||'?'} · ${nrep} repuesto${nrep!==1?'s':''} · ${ntr} trabajo${ntr!==1?'s':''} · Total USD ${(o.total_usd||0).toLocaleString('es-AR')}
+        </div>
+      </div>`;
+  });
+  if(ok.length){
+    html += `<button onclick="otConfirmImport()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:15px;margin-top:6px;">✓ Guardar ${ok.length} OT e integrar</button>`;
+  } else if(venta.length && !bad.length){
+    html += `<div style="text-align:center;color:var(--text3);font-size:12px;padding:8px;">Solo OT de venta/stock — no hay historial de unidad para guardar.</div>`;
+  }
+  box.innerHTML = html;
+}
+
+/* ---------- Confirmar: guarda, genera turnos ---------- */
+function otConfirmImport(){
+  const ok = otPreview.filter(o=>!o.ERROR && o.patente);
+  ok.forEach(o=>{
+    const p=o.patente;
+    otData[p]=otData[p]||[];
+    // evitar duplicado por id
+    if(!otData[p].some(x=>x.id===o.id)) otData[p].push(o);
+    // generar turno en el calendario si tiene fecha
+    if(o.fecha_iso){
+      const existe = events.some(e=>e.dom===p && e.fecha===o.fecha_iso && e.origenOT===o.id);
+      if(!existe){
+        const veh = (FLOTA_VICUNA.find(v=>v.patente===p)||{}).vehiculo || o.modelo || '';
+        events.push({
+          id:'ot_'+o.id, dom:p, vehiculo:veh, fecha:o.fecha_iso,
+          tipo: o.tipo==='PM'?'PM 10.000 km':'Correctivo',
+          area: o.sector||'Mina', tec:o.tecnico||'', km:o.km_efectivo||'',
+          obs:'Generado desde OT '+(o.nro||''), origenOT:o.id
+        });
+      }
+    }
+  });
+  // ordenar historial de cada unidad por km
+  Object.keys(otData).forEach(p=> otData[p].sort((a,b)=>(a.km_efectivo||0)-(b.km_efectivo||0)) );
+  otSaveLocal(); otPushFirebase();
+  if(typeof saveLocal==='function') saveLocal();
+  try { db.ref('turnos').set(events); } catch(e){}
+  document.getElementById('importModal')?.remove();
+  render();
+}
+
+/* ---------- Historial por unidad ---------- */
+function otHistorial(patente){
+  const hist = (otData[patente]||[]).slice().sort((a,b)=>(a.km_efectivo||0)-(b.km_efectivo||0));
+  const modal=document.createElement('div');
+  modal.id='histModal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+  let rows='';
+  if(!hist.length){
+    rows=`<div style="text-align:center;color:var(--text3);padding:24px;">Sin órdenes de trabajo cargadas para esta unidad.</div>`;
+  } else {
+    let totUsd=0, totRep=0;
+    hist.forEach(o=>{ totUsd+=(o.total_usd||0); totRep+=(o.repuestos||[]).length; });
+    rows=`<div style="display:flex;gap:8px;margin-bottom:12px;">
+        <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:700;">${hist.length}</div><div style="font-size:11px;color:var(--text3);">Intervenciones</div></div>
+        <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:700;">${totRep}</div><div style="font-size:11px;color:var(--text3);">Repuestos</div></div>
+        <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:700;">${totUsd.toLocaleString('es-AR')}</div><div style="font-size:11px;color:var(--text3);">USD total</div></div>
+      </div>`;
+    hist.forEach(o=>{
+      const tipoColor=o.tipo==='PM'?'#34C759':(o.tipo==='Correctivo'?'#FF9500':'#8E8E93');
+      const reps=(o.repuestos||[]).map(r=>`<div style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0;"><span>${r.cant}× ${r.desc}</span><span style="color:var(--text3);">USD ${(r.usd||0).toLocaleString('es-AR')}</span></div>`).join('');
+      const trabs=(o.trabajos||[]).map(t=>`<div style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0;"><span>🔧 ${t.desc}</span><span style="color:var(--text3);">USD ${(t.usd||0).toLocaleString('es-AR')}</span></div>`).join('');
+      rows+=`
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="background:${tipoColor}20;color:${tipoColor};border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">${o.tipo}</span>
+            <span style="font-size:13px;font-weight:600;">${(o.km_efectivo||0).toLocaleString('es-AR')} km</span>
+            <span style="font-size:11px;color:var(--text3);margin-left:auto;">${o.fecha||''} · OT ${o.nro||''}</span>
+          </div>
+          ${reps}${trabs}
+          <div style="font-size:12px;font-weight:700;text-align:right;margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">Total: USD ${(o.total_usd||0).toLocaleString('es-AR')}</div>
+        </div>`;
+    });
+  }
+  modal.innerHTML=`
+    <div style="background:var(--bg);width:100%;max-width:640px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px 30px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <span style="font-size:17px;font-weight:700;">Historial — ${patente}</span>
+        <button onclick="document.getElementById('histModal').remove()" style="background:none;border:none;font-size:22px;color:var(--text2);">✕</button>
+      </div>
+      ${rows}
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+/* ---------- Gráficos del Inicio ---------- */
+function otRenderGraficos(){
+  const all=[]; Object.values(otData).forEach(arr=>arr.forEach(o=>all.push(o)));
+  if(!all.length) return '';
+
+  // 1. Repuestos más consumidos
+  const repCnt={}, repUsd={};
+  all.forEach(o=>(o.repuestos||[]).forEach(r=>{ repCnt[r.desc]=(repCnt[r.desc]||0)+r.cant; repUsd[r.desc]=(repUsd[r.desc]||0)+(r.usd||0); }));
+  const topRep=Object.entries(repCnt).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxRep=Math.max(...topRep.map(x=>x[1]),1);
+
+  // 2. Intervenciones por tipo
+  const tipoCnt={PM:0,Correctivo:0,Otro:0};
+  all.forEach(o=>tipoCnt[o.tipo]=(tipoCnt[o.tipo]||0)+1);
+
+  // 3. Costo por mes
+  const mesUsd={};
+  all.forEach(o=>{ if(o.fecha_iso){ const m=o.fecha_iso.slice(0,7); mesUsd[m]=(mesUsd[m]||0)+(o.total_usd||0);} });
+  const meses=Object.entries(mesUsd).sort();
+  const maxMes=Math.max(...meses.map(x=>x[1]),1);
+
+  // 4. Ranking unidades por gasto
+  const uniUsd={};
+  Object.entries(otData).forEach(([p,arr])=>{ uniUsd[p]=arr.reduce((s,o)=>s+(o.total_usd||0),0); });
+  const topUni=Object.entries(uniUsd).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxUni=Math.max(...topUni.map(x=>x[1]),1);
+
+  const bar=(label,val,max,color,extra)=>`
+    <div style="margin-bottom:7px;">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:2px;"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%;">${label}</span><span style="color:var(--text3);">${extra}</span></div>
+      <div style="background:var(--border);border-radius:6px;height:8px;overflow:hidden;"><div style="width:${Math.max(4,val/max*100)}%;height:100%;background:${color};border-radius:6px;"></div></div>
+    </div>`;
+
+  const card=(titulo,contenido)=>`
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px;">${titulo}</div>${contenido}</div>`;
+
+  const g1=topRep.map(([d,c])=>bar(d,c,maxRep,'#5856D6',`${c} u · USD ${(repUsd[d]||0).toLocaleString('es-AR')}`)).join('');
+  const totInt=tipoCnt.PM+tipoCnt.Correctivo+tipoCnt.Otro;
+  const g2=`<div style="display:flex;gap:8px;">
+      <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:700;color:#34C759;">${tipoCnt.PM}</div><div style="font-size:11px;color:var(--text3);">PM</div></div>
+      <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:700;color:#FF9500;">${tipoCnt.Correctivo}</div><div style="font-size:11px;color:var(--text3);">Correctivo</div></div>
+      <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:700;color:#8E8E93;">${tipoCnt.Otro}</div><div style="font-size:11px;color:var(--text3);">Otro</div></div>
+    </div>`;
+  const g3=meses.map(([m,v])=>{ const d=new Date(m+'-01T12:00:00'); const lbl=MONTHS[d.getMonth()]+' '+d.getFullYear(); return bar(lbl,v,maxMes,'#FF9500','USD '+v.toLocaleString('es-AR')); }).join('');
+  const g4=topUni.map(([p,v])=>bar(p,v,maxUni,'#FF3B30','USD '+v.toLocaleString('es-AR'))).join('');
+
+  return `<div style="padding:0 16px 8px;">
+    <div class="sec-hdr" style="margin:6px 0 10px;">Análisis de mantenimiento</div>
+    ${card('🔩 Repuestos más consumidos', g1)}
+    ${card('🛠️ Intervenciones por tipo ('+totInt+')', g2)}
+    ${card('💵 Costo por período', g3||'<div style="font-size:12px;color:var(--text3);">Sin datos de fecha</div>')}
+    ${card('🚚 Ranking de unidades por gasto', g4)}
+  </div>`;
+}
+
+/* ---------- Init ---------- */
+otLoadLocal();
+otBindFirebase();
+
 </script>
 </body>
 </html>
