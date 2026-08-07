@@ -307,9 +307,10 @@ body {
   margin: auto; padding: 0;
 }
 .mc-day.has-ev::after {
-  content: ''; display: block; width: 4px; height: 4px;
-  background: var(--red); border-radius: 50%; margin: 1px auto 0;
+  content: ''; display: block; width: 6px; height: 6px;
+  background: var(--red); border-radius: 50%; margin: 2px auto 0;
 }
+.mc-day.has-cumpl::after { background: #0A6EBD; }
 .mc-day.today.has-ev::after { background: rgba(255,255,255,0.8); }
 .mc-day.om { opacity: 0.22; pointer-events: none; }
 .mc-day.sel:not(.today) {
@@ -1371,6 +1372,7 @@ function importRepuestos(event) {
 function buildCal() {
   const y = vDate.getFullYear(), m = vDate.getMonth();
   const evDates = new Set(events.map(e => e.fecha));
+  const cumplDates = new Set(events.filter(e => e.origenOT || e.cumplido).map(e => e.fecha));
   const first = new Date(y,m,1).getDay();
   const days  = new Date(y,m+1,0).getDate();
   const prev  = new Date(y,m,0).getDate();
@@ -1393,6 +1395,7 @@ function buildCal() {
     let cls   = 'mc-day';
     if (d === td.getDate() && m === td.getMonth() && y === td.getFullYear()) cls += ' today';
     if (evDates.has(ds)) cls += ' has-ev';
+    if (cumplDates.has(ds)) cls += ' has-cumpl';
     if (selDay === ds) cls += ' sel';
     html += `<div class="${cls}" data-date="${ds}" onclick="selectDay('${ds}')">${d}</div>`;
   }
@@ -2022,6 +2025,7 @@ function otRenderPreview(){
 /* ---------- Confirmar: guarda, genera turnos ---------- */
 function otConfirmImport(){
   const ok = otPreview.filter(o=>!o.ERROR && o.patente);
+  const nuevosTurnos = [];
   ok.forEach(o=>{
     const p=o.patente;
     otData[p]=otData[p]||[];
@@ -2033,11 +2037,9 @@ function otConfirmImport(){
       if(!existe){
         const veh = (FLOTA_VICUNA.find(v=>v.patente===p)||{}).vehiculo || o.modelo || '';
         const km = o.km_efectivo||0;
-        // mapear tipo OT al código PM de la app
         const pmCode = o.tipo==='PM' ? 'PM10' : (o.tipo==='Correctivo' ? 'CORR' : 'CORR');
-        // id numérico único (la app ordena por id numérico)
-        const nid = Date.now() + Math.floor(Math.random()*10000);
-        events.push({
+        const nid = Date.now() + Math.floor(Math.random()*100000) + Math.floor(Math.random()*1000);
+        const turno = {
           id: nid,
           dom: p,
           vehiculo: veh,
@@ -2045,20 +2047,24 @@ function otConfirmImport(){
           pm: pmCode,
           area: o.sector || 'Mina',
           tec: o.tecnico || '',
-          kmU: km,           // km de esta intervención
-          kmA: km,           // km actuales (igual al de la OT)
+          kmU: km,
+          kmA: km,
           obs: 'Generado desde OT '+(o.nro||''),
           origenOT: o.id,
           cumplido: true
-        });
+        };
+        events.push(turno);
+        nuevosTurnos.push(turno);
       }
     }
   });
   // ordenar historial de cada unidad por km
   Object.keys(otData).forEach(p=> otData[p].sort((a,b)=>(a.km_efectivo||0)-(b.km_efectivo||0)) );
   otSaveLocal(); otPushFirebase();
-  if(typeof saveLocal==='function') saveLocal();
-  try { db.ref('turnos').set(events); } catch(e){}
+  // guardar cada turno OT individualmente (igual que los manuales), sin pisar los existentes
+  try {
+    nuevosTurnos.forEach(t=> db.ref('turnos').child(String(t.id)).set(t));
+  } catch(e){ console.warn('guardar turnos OT', e); }
   document.getElementById('importModal')?.remove();
   render();
 }
@@ -2178,7 +2184,9 @@ function otSanearTurnos(){
       if(!e.cumplido){ e.cumplido = true; cambio=true; }
     }
   });
-  if(cambio){ try{ db.ref('turnos').set(events); }catch(err){} }
+  if(cambio){
+    try { events.forEach(e=>{ if(e.origenOT) db.ref('turnos').child(String(e.id)).set(e); }); } catch(err){}
+  }
   return cambio;
 }
 
