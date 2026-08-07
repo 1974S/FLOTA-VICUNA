@@ -1811,7 +1811,7 @@ function generarInforme() {
 }
 
 // ── INIT ───────────────────────────────────────────────────
-render();
+try{ render(); }catch(e){ console.error('Error en render() inicial:', e); }
 
 /* ===== MÓDULO OT (inyectado) ===== */
 /* ==================== MÓDULO ÓRDENES DE TRABAJO (OT) ====================
@@ -2636,7 +2636,12 @@ function generarInformeWord(){
 }
 
 
-/* ===== CONTROL DE ACCESO (inyectado) ===== */
+/* ===== FIN SCRIPT PRINCIPAL ===== */
+</script>
+<script>
+/* ===== CONTROL DE ACCESO (inyectado) — script independiente para que
+   corra SIEMPRE, aunque el script principal tire un error antes de llegar
+   acá (esa era la causa de que el login no apareciera) ===== */
 /* ==================== CONTROL DE ACCESO POR ROL ====================
    Pantalla de PIN al abrir. Admin ve todo; Supervisor solo Turnos
    (ver + cargar), sin importar OT, sin informes, sin costos.
