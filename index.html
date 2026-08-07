@@ -2027,14 +2027,26 @@ function otConfirmImport(){
     if(!otData[p].some(x=>x.id===o.id)) otData[p].push(o);
     // generar turno en el calendario si tiene fecha
     if(o.fecha_iso){
-      const existe = events.some(e=>e.dom===p && e.fecha===o.fecha_iso && e.origenOT===o.id);
+      const existe = events.some(e=>e.origenOT===o.id);
       if(!existe){
         const veh = (FLOTA_VICUNA.find(v=>v.patente===p)||{}).vehiculo || o.modelo || '';
+        const km = o.km_efectivo||0;
+        // mapear tipo OT al código PM de la app
+        const pmCode = o.tipo==='PM' ? 'PM10' : (o.tipo==='Correctivo' ? 'CORR' : 'CORR');
+        // id numérico único (la app ordena por id numérico)
+        const nid = Date.now() + Math.floor(Math.random()*10000);
         events.push({
-          id:'ot_'+o.id, dom:p, vehiculo:veh, fecha:o.fecha_iso,
-          tipo: o.tipo==='PM'?'PM 10.000 km':'Correctivo',
-          area: o.sector||'Mina', tec:o.tecnico||'', km:o.km_efectivo||'',
-          obs:'Generado desde OT '+(o.nro||''), origenOT:o.id
+          id: nid,
+          dom: p,
+          vehiculo: veh,
+          fecha: o.fecha_iso,
+          pm: pmCode,
+          area: o.sector || 'Mina',
+          tec: o.tecnico || '',
+          kmU: km,           // km de esta intervención
+          kmA: km,           // km actuales (igual al de la OT)
+          obs: 'Generado desde OT '+(o.nro||''),
+          origenOT: o.id
         });
       }
     }
@@ -2149,9 +2161,37 @@ function otRenderGraficos(){
   </div>`;
 }
 
+/* ---------- Saneador: corrige turnos OT viejos sin pm/kmU/kmA ---------- */
+function otSanearTurnos(){
+  if(typeof events==='undefined' || !Array.isArray(events)) return false;
+  let cambio=false;
+  events.forEach(e=>{
+    if(e.origenOT){ // turno generado por OT
+      if(!e.pm || !PMS[e.pm]){ e.pm = 'CORR'; cambio=true; }
+      if(typeof e.kmU!=='number'){ e.kmU = parseInt(e.km)||0; cambio=true; }
+      if(typeof e.kmA!=='number'){ e.kmA = e.kmU||0; cambio=true; }
+      if(typeof e.id!=='number'){ e.id = Date.now()+Math.floor(Math.random()*10000); cambio=true; }
+      if(e.tipo){ delete e.tipo; cambio=true; }
+    }
+  });
+  if(cambio){ try{ db.ref('turnos').set(events); }catch(err){} }
+  return cambio;
+}
+
 /* ---------- Init ---------- */
 otLoadLocal();
 otBindFirebase();
+// sanear turnos OT viejos una vez que events esté disponible
+setTimeout(()=>{ if(otSanearTurnos()) { try{ render(); }catch(e){} } }, 1500);
+// red de seguridad: si Plan PM no cargó tras 3s, cargar default para no quedar colgado
+setTimeout(()=>{
+  try {
+    if(typeof planData!=='undefined' && !planData && typeof defaultPlan==='function'){
+      planData = { PM5: defaultPlan('PM5'), PM10: defaultPlan('PM10') };
+      if(curTab==='plan') render();
+    }
+  } catch(e){}
+}, 3000);
 
 </script>
 </body>
