@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -728,6 +729,12 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+// Autenticación anónima — cada dispositivo se loguea solo, sin pedir nada
+// al técnico. Necesaria para que las reglas de la base (auth != null)
+// dejen leer/escribir. Se activa en Firebase Console → Authentication →
+// Sign-in method → Anónimo (hay que habilitarlo ahí una sola vez).
+firebase.auth().signInAnonymously().catch(e=>console.error('Error de autenticación anónima:', e));
 
 /* ===== ESTADO DE ACCESO (movido acá arriba de todo) =====
    render() se llama más abajo y también dentro del listener de Firebase
