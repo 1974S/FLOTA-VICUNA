@@ -254,6 +254,7 @@ body {
 .pm7 { background: #FFF0E3; color: #B84800; }
 .pm8 { background: #FCE8F3; color: #AD1457; }
 .st-ok   { background: #E3F9E9; color: #1A7F3C; }
+.st-cumpl{ background: #D8F0FF; color: #0A6EBD; }
 .st-prox { background: #FFF5E0; color: #B86800; }
 .st-venc { background: #FFE5E5; color: #CC0000; }
 
@@ -861,6 +862,7 @@ const fmtKm    = n  => n.toLocaleString('es-AR') + ' km';
 const fmtDate  = s  => { const d = new Date(s+'T12:00:00'); return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}`; };
 
 function getStatus(e) {
+  if (e.origenOT || e.cumplido)             return { sc:'st-cumpl', st:'Cumplido' };
   const pm = PMS[e.pm], diff = e.kmA - e.kmU;
   const eDate = new Date(e.fecha+'T12:00:00');
   if (eDate < NOW_DAY)                      return { sc:'st-venc', st:'Vencido' };
@@ -2046,7 +2048,8 @@ function otConfirmImport(){
           kmU: km,           // km de esta intervención
           kmA: km,           // km actuales (igual al de la OT)
           obs: 'Generado desde OT '+(o.nro||''),
-          origenOT: o.id
+          origenOT: o.id,
+          cumplido: true
         });
       }
     }
@@ -2172,6 +2175,7 @@ function otSanearTurnos(){
       if(typeof e.kmA!=='number'){ e.kmA = e.kmU||0; cambio=true; }
       if(typeof e.id!=='number'){ e.id = Date.now()+Math.floor(Math.random()*10000); cambio=true; }
       if(e.tipo){ delete e.tipo; cambio=true; }
+      if(!e.cumplido){ e.cumplido = true; cambio=true; }
     }
   });
   if(cambio){ try{ db.ref('turnos').set(events); }catch(err){} }
