@@ -890,6 +890,8 @@ function setTab(t, el) {
 
 function render() {
   const c = document.getElementById('content');
+  // Supervisor: solo puede ver Turnos
+  if(typeof esSupervisor==='function' && esSupervisor() && curTab!=='turnos'){ curTab='turnos'; }
   if      (curTab === 'inicio')    renderInicio(c);
   else if (curTab === 'turnos')    renderTurnos(c);
   else if (curTab === 'dashboard') renderDashboard(c);
@@ -973,8 +975,10 @@ function renderTurnos(c) {
       <input placeholder="Buscar patente, área, técnico..." value="${srch}" oninput="srch=this.value;renderTurnos(document.getElementById('content'))">
     </div>
     <div style="padding:0 16px 10px;">
+      ${(typeof esAdmin==='function' && esAdmin()) ? `
       <button onclick="openImportModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📥 Importar órdenes de trabajo (PDF)</button>
       <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
+      ` : ''}
     </div>
     `;
 
@@ -1590,13 +1594,13 @@ function openDet(id) {
         <div onclick="toggleEvTask('${t.id}')" style="width:20px;height:20px;border-radius:50%;border:2px solid ${t.done?'#34C759':'var(--border)'};background:${t.done?'#34C759':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:1px;">${t.done?'<span style="color:white;font-size:11px;">✓</span>':''}</div>
         <div style="flex:1;">
           <div style="font-size:13px;${t.done?'text-decoration:line-through;opacity:0.6;':''}"><span style="color:var(--text3);">${t.n}.</span> ${t.sys}</div>
-          ${t.costo > 0 ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">💰 $${t.costo.toLocaleString('es-AR')}${t.tiempo ? ' · ⏱ ' + t.tiempo : ''}</div>` : ''}
+          ${(t.costo > 0 && !(typeof esSupervisor==='function' && esSupervisor())) ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">💰 $${t.costo.toLocaleString('es-AR')}${t.tiempo ? ' · ⏱ ' + t.tiempo : ''}</div>` : ''}
         </div>
       </li>`).join('');
     costoHtml = `
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 14px;margin:10px 0;display:flex;justify-content:space-between;align-items:center;">
         <span style="font-size:12.5px;color:var(--text2);">${doneCount}/${e.checklist.length} completadas (${pct2}%)</span>
-        <span style="font-size:15px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>
+        ${(typeof esSupervisor==='function' && esSupervisor()) ? '' : `<span style="font-size:15px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>`}
       </div>`;
   } else {
     tasksHtml = pm.tasks.map(t => `<li class="task-li">${t}</li>`).join('');
@@ -2629,6 +2633,109 @@ function generarInformeWord(){
       if(st) st.textContent='✅ Word generado.';
     }).catch(e=>{ console.error(e); if(st) st.textContent='Error Word: '+e.message; });
   } catch(e){ console.error(e); if(st) st.textContent='Error al generar Word: '+e.message; }
+}
+
+
+/* ===== CONTROL DE ACCESO (inyectado) ===== */
+/* ==================== CONTROL DE ACCESO POR ROL ====================
+   Pantalla de PIN al abrir. Admin ve todo; Supervisor solo Turnos
+   (ver + cargar), sin importar OT, sin informes, sin costos.
+   ================================================================= */
+
+// PINs — CAMBIABLES por el admin
+const PIN_ADMIN = '2468';       // acceso completo
+const PIN_SUPERVISOR = '1357';  // solo turnos
+
+let userRole = null;  // 'admin' | 'supervisor'
+
+function accesoInit(){
+  // recordar sesión en este dispositivo
+  const saved = sessionStorage.getItem('fv_role');
+  if(saved === 'admin' || saved === 'supervisor'){ userRole = saved; aplicarRol(); return; }
+  mostrarLogin();
+}
+
+function mostrarLogin(){
+  const ov = document.createElement('div');
+  ov.id = 'loginOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:var(--bg,#0d0d0d);z-index:100000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;';
+  ov.innerHTML = `
+    <div style="width:100%;max-width:340px;text-align:center;">
+      <div style="width:64px;height:64px;border-radius:16px;background:var(--red,#CC0000);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 16px;">🔧</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text,#fff);">Flota Vicuña</div>
+      <div style="font-size:13px;color:var(--text3,#888);margin-bottom:24px;">Ingresá tu PIN de acceso</div>
+      <input id="pinInput" type="password" inputmode="numeric" maxlength="8" placeholder="••••"
+        style="width:100%;text-align:center;font-size:26px;letter-spacing:8px;padding:14px;border-radius:12px;border:1.5px solid var(--border,#333);background:var(--card,#1a1a1a);color:var(--text,#fff);margin-bottom:12px;"
+        onkeydown="if(event.key==='Enter')validarPin()">
+      <button onclick="validarPin()" style="width:100%;padding:14px;border-radius:12px;background:var(--red,#CC0000);color:#fff;border:none;font-weight:700;font-size:16px;">Ingresar</button>
+      <div id="pinError" style="font-size:13px;color:#FF6B6B;margin-top:12px;min-height:18px;"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  setTimeout(()=>{ const i=document.getElementById('pinInput'); if(i) i.focus(); }, 100);
+}
+
+function validarPin(){
+  const inp = document.getElementById('pinInput');
+  const err = document.getElementById('pinError');
+  const val = (inp?.value||'').trim();
+  if(val === PIN_ADMIN){ userRole='admin'; }
+  else if(val === PIN_SUPERVISOR){ userRole='supervisor'; }
+  else { if(err) err.textContent='PIN incorrecto'; if(inp){ inp.value=''; inp.focus(); } return; }
+  sessionStorage.setItem('fv_role', userRole);
+  document.getElementById('loginOverlay')?.remove();
+  aplicarRol();
+}
+
+function accesoLogout(){
+  sessionStorage.removeItem('fv_role');
+  location.reload();
+}
+
+// Aplica las restricciones visuales según el rol
+function aplicarRol(){
+  document.body.setAttribute('data-role', userRole);
+  const esSup = (userRole === 'supervisor');
+
+  // Ocultar pestañas para supervisor: solo deja Turnos
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    const oc = btn.getAttribute('onclick')||'';
+    const esTurnos = oc.indexOf("setTab('turnos'") > -1;
+    btn.style.display = (esSup && !esTurnos) ? 'none' : '';
+  });
+
+  if(esSup){
+    // forzar la vista de Turnos
+    curTab = 'turnos';
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    const tb = Array.from(document.querySelectorAll('.tab-btn')).find(b=>(b.getAttribute('onclick')||'').indexOf("setTab('turnos'")>-1);
+    if(tb) tb.classList.add('active');
+    if(typeof render==='function') render();
+  }
+
+  // Botón de salir en el header (para poder cambiar de usuario)
+  if(!document.getElementById('logoutBtn')){
+    const add = document.querySelector('.btn-add-nav');
+    if(add && add.parentElement){
+      const lo = document.createElement('button');
+      lo.id='logoutBtn'; lo.textContent='⏻';
+      lo.title = 'Salir ('+userRole+')';
+      lo.setAttribute('aria-label','Salir');
+      lo.style.cssText='background:rgba(255,255,255,.15);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:16px;margin-left:8px;cursor:pointer;';
+      lo.onclick = accesoLogout;
+      add.parentElement.insertBefore(lo, add.nextSibling);
+    }
+  }
+}
+
+// Helpers que otras funciones consultan
+function esAdmin(){ return userRole === 'admin'; }
+function esSupervisor(){ return userRole === 'supervisor'; }
+
+// Arrancar el control de acceso cuando el DOM esté listo
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', ()=>setTimeout(accesoInit, 200));
+} else {
+  setTimeout(accesoInit, 200);
 }
 
 </script>
