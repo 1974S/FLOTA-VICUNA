@@ -728,6 +728,20 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+/* ===== ESTADO DE ACCESO (movido acá arriba de todo) =====
+   render() se llama más abajo y también dentro del listener de Firebase
+   en tiempo real, ambos ANTES de donde vivía originalmente este bloque.
+   Como render() consulta esSupervisor()/esAdmin(), y esas funciones leen
+   userRole, si userRole no está declarado todavía el script se corta ahí
+   con "Cannot access 'userRole' before initialization" y nunca llega a
+   mostrar el login. Por eso esto tiene que declararse antes que nada. */
+const PIN_ADMIN = '2468';       // acceso completo
+const PIN_SUPERVISOR = '1357';  // solo turnos
+let userRole = null;  // 'admin' | 'supervisor'
+function esAdmin(){ return userRole === 'admin'; }
+function esSupervisor(){ return userRole === 'supervisor'; }
+
 const refTurnos = db.ref('turnos');
 const refPlan = db.ref('plan_pm');
 const refRepuestos = db.ref('repuestos');
@@ -753,7 +767,7 @@ refTurnos.on('value', snap => {
     nid = 1;
   }
   try { localStorage.setItem('tf_vicuna_v1', JSON.stringify(events)); } catch(e) {}
-  render();
+  try{ render(); }catch(e){ console.error('Error en render() (listener turnos):', e); }
 });
 
 // ─── FLOTA VICUÑA ─────────────────────────────────────────────────────────
@@ -958,7 +972,15 @@ function clearDay() {
 }
 
 function renderTurnos(c) {
-  let list = [...events].sort((a,b) => a.fecha.localeCompare(b.fecha));
+  const esSup = (typeof esSupervisor==='function' && esSupervisor());
+  // Supervisor: solo turnos no cumplidos (pendientes + próx. límite + vencidos)
+  let base = esSup ? events.filter(e => !(e.origenOT || e.cumplido)) : [...events];
+  let list = base.sort((a,b) => a.fecha.localeCompare(b.fecha));
+
+  if (esSup && selDay) {
+    list = list.filter(e => e.fecha === selDay);
+  }
+
   if (srch) {
     const q = srch.toLowerCase();
     list = list.filter(e =>
@@ -982,6 +1004,14 @@ function renderTurnos(c) {
     </div>
     `;
 
+  if (esSup) {
+    html += buildCal(base);
+    html += `<div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between;">
+      <span>${selDay ? 'Turnos del día' : 'Turnos pendientes'}</span>
+      ${selDay ? `<span style="color:var(--red);font-size:13px;cursor:pointer;font-weight:600;" onclick="clearDay()">Ver todos ✕</span>` : ''}
+    </div>`;
+  }
+
   if (!list.length) {
     html += `<div class="empty"><div class="empty-icon">🔎</div><div class="empty-txt">Sin resultados</div></div>`;
   } else {
@@ -992,6 +1022,10 @@ function renderTurnos(c) {
 
   c.innerHTML = html;
   bindCards(c);
+  if (esSup) {
+    c.querySelector('#mc-prev')?.addEventListener('click', () => { vDate = new Date(vDate.getFullYear(), vDate.getMonth()-1, 1); render(); });
+    c.querySelector('#mc-next')?.addEventListener('click', () => { vDate = new Date(vDate.getFullYear(), vDate.getMonth()+1, 1); render(); });
+  }
 }
 
 
@@ -1378,10 +1412,11 @@ function importRepuestos(event) {
 
 
 // ── CALENDAR ──────────────────────────────────────────────
-function buildCal() {
+function buildCal(list) {
+  const src = list || events;
   const y = vDate.getFullYear(), m = vDate.getMonth();
-  const evDates = new Set(events.map(e => e.fecha));
-  const cumplDates = new Set(events.filter(e => e.origenOT || e.cumplido).map(e => e.fecha));
+  const evDates = new Set(src.map(e => e.fecha));
+  const cumplDates = new Set(src.filter(e => e.origenOT || e.cumplido).map(e => e.fecha));
   const first = new Date(y,m,1).getDay();
   const days  = new Date(y,m+1,0).getDate();
   const prev  = new Date(y,m,0).getDate();
@@ -2645,13 +2680,9 @@ function generarInformeWord(){
 /* ==================== CONTROL DE ACCESO POR ROL ====================
    Pantalla de PIN al abrir. Admin ve todo; Supervisor solo Turnos
    (ver + cargar), sin importar OT, sin informes, sin costos.
+   PIN_ADMIN, PIN_SUPERVISOR, userRole, esAdmin() y esSupervisor() ahora
+   se declaran arriba de todo, junto al init de Firebase — ver nota ahí.
    ================================================================= */
-
-// PINs — CAMBIABLES por el admin
-const PIN_ADMIN = '2468';       // acceso completo
-const PIN_SUPERVISOR = '1357';  // solo turnos
-
-let userRole = null;  // 'admin' | 'supervisor'
 
 function accesoInit(){
   // recordar sesión en este dispositivo
@@ -2731,10 +2762,6 @@ function aplicarRol(){
     }
   }
 }
-
-// Helpers que otras funciones consultan
-function esAdmin(){ return userRole === 'admin'; }
-function esSupervisor(){ return userRole === 'supervisor'; }
 
 // Arrancar el control de acceso cuando el DOM esté listo
 if(document.readyState === 'loading'){
