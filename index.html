@@ -579,6 +579,7 @@ body {
     <div class="tabbar">
       <button class="tab-btn active" onclick="setTab('inicio',this)">Inicio</button>
       <button class="tab-btn" onclick="setTab('turnos',this)">Turnos</button>
+      <button class="tab-btn" onclick="setTab('dashboard',this)">Dashboard</button>
       <button class="tab-btn" onclick="setTab('flota',this)">Flota</button>
       <button class="tab-btn" onclick="setTab('plan',this)">Plan PM</button>
     </div>
@@ -886,10 +887,11 @@ function setTab(t, el) {
 
 function render() {
   const c = document.getElementById('content');
-  if      (curTab === 'inicio')  renderInicio(c);
-  else if (curTab === 'turnos')  renderTurnos(c);
-  else if (curTab === 'flota')   renderFlota(c);
-  else                           renderPlan(c);
+  if      (curTab === 'inicio')    renderInicio(c);
+  else if (curTab === 'turnos')    renderTurnos(c);
+  else if (curTab === 'dashboard') renderDashboard(c);
+  else if (curTab === 'flota')     renderFlota(c);
+  else                             renderPlan(c);
 }
 
 function renderInicio(c) {
@@ -2204,6 +2206,136 @@ setTimeout(()=>{
     }
   } catch(e){}
 }, 3000);
+
+
+/* ===== DASHBOARD (inyectado) ===== */
+/* ==================== DASHBOARD (Resumen de flota) ====================
+   Combina el estilo Veladero (estado de turnos, tipos de PM, por área,
+   alertas) con datos de Vicuña (OT cumplidas, consumo de repuestos, costos).
+   ===================================================================== */
+function renderDashboard(c) {
+  const evs = Array.isArray(events) ? events : [];
+
+  // ---- Estado de turnos ----
+  let pend=0, prox=0, venc=0, corr=0, pred=0, cumpl=0;
+  evs.forEach(e=>{
+    if(e.origenOT || e.cumplido){ cumpl++; if(e.pm==='CORR') corr++; return; }
+    const pm = PMS[e.pm];
+    if(e.pm==='CORR'){ corr++; return; }
+    if(e.pm==='PRED'){ pred++; return; }
+    const eDate = new Date(e.fecha+'T12:00:00');
+    if(eDate < NOW_DAY){ venc++; }
+    else if(pm && pm.km>0 && (e.kmA-e.kmU) >= pm.km*0.9){ prox++; }
+    else { pend++; }
+  });
+
+  // ---- Tipos de PM ----
+  const tipo = {PM5:0, PM10:0, CORR:0, PRED:0};
+  evs.forEach(e=>{ if(tipo[e.pm]!==undefined) tipo[e.pm]++; });
+  const maxTipo = Math.max(tipo.PM5, tipo.PM10, tipo.CORR, tipo.PRED, 1);
+
+  // ---- Turnos por área ----
+  const areas = {};
+  evs.forEach(e=>{ const a=e.area||'Sin área'; areas[a]=(areas[a]||0)+1; });
+  const areaArr = Object.entries(areas).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxArea = Math.max(...areaArr.map(x=>x[1]), 1);
+
+  // ---- Datos de OT (Vicuña) ----
+  const otAll=[]; if(typeof otData!=='undefined' && otData) Object.values(otData).forEach(arr=>arr.forEach(o=>otAll.push(o)));
+  const nUnid = (typeof otData!=='undefined' && otData) ? Object.keys(otData).length : 0;
+  let costoTotal=0, repTotal=0;
+  otAll.forEach(o=>{ costoTotal+=(o.total_usd||0); repTotal+=(o.repuestos||[]).length; });
+
+  // ---- Alertas (turnos vencidos / próximos, no cumplidos) ----
+  const alertas = evs.filter(e=>{
+    if(e.origenOT||e.cumplido) return false;
+    const pm=PMS[e.pm]; const eDate=new Date(e.fecha+'T12:00:00');
+    return eDate<NOW_DAY || (pm && pm.km>0 && (e.kmA-e.kmU)>=pm.km*0.9);
+  }).sort((a,b)=> new Date(a.fecha)-new Date(b.fecha)).slice(0,8);
+
+  // ===== HTML =====
+  let html = `<div style="padding:14px 16px 30px;">`;
+
+  html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
+
+  // Fila: Estado de turnos + Tipos de PM
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">`;
+
+  // Estado de turnos
+  const dot=(color,label,val)=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="width:11px;height:11px;border-radius:50%;background:${color};flex:none;"></span><span style="font-size:13px;color:var(--text2);">${label}</span><span style="margin-left:auto;font-weight:700;font-size:14px;">${val}</span></div>`;
+  html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:12px;">ESTADO DE TURNOS</div>
+    ${dot('#34C759','Pendientes',pend)}
+    ${dot('#FF9500','Próx. límite',prox)}
+    ${dot('#FF3B30','Vencidos',venc)}
+    ${dot('#5856D6','Correctivos',corr)}
+    ${dot('#0A6EBD','Cumplidos',cumpl)}
+  </div>`;
+
+  // Tipos de PM
+  const pmBar=(label,val,color)=>`<div style="margin-bottom:10px;"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-bottom:3px;"><span>${label}</span><span style="font-weight:700;color:var(--text);">${val}</span></div><div style="background:var(--border);border-radius:5px;height:7px;overflow:hidden;"><div style="width:${Math.max(4,val/maxTipo*100)}%;height:100%;background:${color};border-radius:5px;"></div></div></div>`;
+  html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:12px;">TIPOS DE PM</div>
+    ${pmBar('PM 5.000 km',tipo.PM5,'#34C759')}
+    ${pmBar('PM 10.000 km',tipo.PM10,'#0A6EBD')}
+    ${pmBar('Correctivo',tipo.CORR,'#5856D6')}
+    ${pmBar('Predictivo',tipo.PRED,'#00BCD4')}
+  </div>`;
+  html += `</div>`;
+
+  // Turnos por área
+  html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:12px;">TURNOS POR ÁREA</div>`;
+  if(areaArr.length){
+    areaArr.forEach(([a,v])=>{
+      html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span style="font-size:12px;color:var(--text2);width:96px;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a}</span>
+        <div style="flex:1;background:var(--border);border-radius:5px;height:8px;overflow:hidden;"><div style="width:${Math.max(4,v/maxArea*100)}%;height:100%;background:#2E7CF6;border-radius:5px;"></div></div>
+        <span style="font-weight:700;font-size:13px;width:22px;text-align:right;">${v}</span>
+      </div>`;
+    });
+  } else {
+    html += `<div style="font-size:12px;color:var(--text3);">Sin turnos cargados aún.</div>`;
+  }
+  html += `</div>`;
+
+  // Resumen de OT (Vicuña)
+  html += `<div class="sec-hdr" style="margin:18px 0 12px;">Órdenes de trabajo</div>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;">${otAll.length}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">OT cargadas</div></div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;">${nUnid}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">Unidades</div></div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;">${repTotal}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">Repuestos</div></div>
+  </div>`;
+  html += `<div style="background:linear-gradient(135deg,#CC0000,#990000);border-radius:14px;padding:16px;margin-bottom:12px;color:#fff;">
+    <div style="font-size:12px;opacity:.85;letter-spacing:.04em;">COSTO TOTAL DE MANTENIMIENTO</div>
+    <div style="font-size:28px;font-weight:800;margin-top:4px;">USD ${costoTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div>
+    <div style="font-size:11px;opacity:.75;margin-top:2px;">Acumulado de todas las OT importadas</div>
+  </div>`;
+
+  // Alertas de mantenimiento
+  html += `<div class="sec-hdr" style="margin:18px 0 12px;">⚠️ Alertas de mantenimiento</div>`;
+  if(alertas.length){
+    alertas.forEach(e=>{
+      const pm=PMS[e.pm]; const eDate=new Date(e.fecha+'T12:00:00');
+      const vencido = eDate<NOW_DAY;
+      const badge = vencido ? '<span style="background:#FFE5E5;color:#CC0000;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;">Vencido</span>'
+                            : '<span style="background:#FFF5E0;color:#B86800;font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;">Próximo</span>';
+      html += `<div style="background:${vencido?'#FFF5F5':'#FFFBF0'};border:1px solid ${vencido?'#FFD5D5':'#FFE8C0'};border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;">
+        <span style="width:14px;height:14px;border-radius:50%;background:${vencido?'#FF3B30':'#FF9500'};flex:none;"></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:14px;color:#1a1a1a;">${e.dom||''} <span style="font-weight:400;color:#888;font-size:12px;">${e.vehiculo||''}</span></div>
+          <div style="font-size:12px;color:#666;margin-top:2px;">${pm?pm.short:''} · ${e.area||''}${e.tec?(' · '+e.tec):''}</div>
+        </div>
+        ${badge}
+      </div>`;
+    });
+  } else {
+    html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;color:var(--text3);">✅ Sin alertas pendientes — todo al día.</div>`;
+  }
+
+  html += `</div>`;
+  c.innerHTML = html;
+}
 
 </script>
 </body>
