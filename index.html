@@ -1805,9 +1805,10 @@ render();
    en Firebase, genera turnos, alimenta historial e Inicio (gráficos).
    ======================================================================== */
 
-let otData = {};        // { patente: [ {ot}, {ot}, ... ] }
-let otPreview = [];     // OT parseadas esperando confirmación
-const OT_KEY = 'tf_vicuna_ot_v1';
+var otData = window.otData || {};        // { patente: [ {ot}, {ot}, ... ] }
+var otPreview = window.otPreview || [];  // OT parseadas esperando confirmación
+window.otData = otData; window.otPreview = otPreview;
+var OT_KEY = 'tf_vicuna_ot_v1';
 
 /* ---------- Carga / persistencia ---------- */
 function otLoadLocal(){
@@ -2093,6 +2094,7 @@ function otHistorial(patente){
 
 /* ---------- Gráficos del Inicio ---------- */
 function otRenderGraficos(){
+  if(typeof otData==='undefined' || !otData) return '';
   const all=[]; Object.values(otData).forEach(arr=>arr.forEach(o=>all.push(o)));
   if(!all.length) return '';
 
