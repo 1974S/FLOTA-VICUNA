@@ -736,8 +736,8 @@ const db = firebase.database();
    userRole, si userRole no está declarado todavía el script se corta ahí
    con "Cannot access 'userRole' before initialization" y nunca llega a
    mostrar el login. Por eso esto tiene que declararse antes que nada. */
-const PIN_ADMIN = '2468';       // acceso completo
-const PIN_SUPERVISOR = '1357';  // solo turnos
+const PIN_ADMIN = '1974';       // acceso completo
+const PIN_SUPERVISOR = '1984';  // solo turnos
 let userRole = null;  // 'admin' | 'supervisor'
 function esAdmin(){ return userRole === 'admin'; }
 function esSupervisor(){ return userRole === 'supervisor'; }
