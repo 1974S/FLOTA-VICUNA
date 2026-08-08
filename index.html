@@ -736,6 +736,18 @@ const db = firebase.database();
 // Sign-in method → Anónimo (hay que habilitarlo ahí una sola vez).
 firebase.auth().signInAnonymously().catch(e=>console.error('Error de autenticación anónima:', e));
 
+// Espera a que la autenticación esté lista antes de ejecutar cb. En una
+// sesión nueva (ej. incógnito, primera vez en un dispositivo) signInAnonymously()
+// tarda un instante; si los listeners de Firebase se registran ANTES de que
+// termine, el servidor los rechaza (regla auth != null) y quedan sin datos
+// para siempre, sin reintentar solos. Por eso todo listener de datos debe
+// arrancar adentro de whenAuthReady().
+function whenAuthReady(cb){
+  const unsub = firebase.auth().onAuthStateChanged(user=>{
+    if(user){ unsub(); cb(); }
+  });
+}
+
 /* ===== ESTADO DE ACCESO (movido acá arriba de todo) =====
    render() se llama más abajo y también dentro del listener de Firebase
    en tiempo real, ambos ANTES de donde vivía originalmente este bloque.
@@ -777,7 +789,7 @@ function loadEvents() {
 }
 
 // Escuchar cambios en Firebase en tiempo real
-refTurnos.on('value', snap => {
+whenAuthReady(()=> refTurnos.on('value', snap => {
   const data = snap.val();
   if (data) {
     events = Object.values(data).sort((a,b) => a.id - b.id);
@@ -788,7 +800,7 @@ refTurnos.on('value', snap => {
   }
   try { localStorage.setItem('tf_vicuna_v1', JSON.stringify(events)); } catch(e) {}
   try{ render(); }catch(e){ console.error('Error en render() (listener turnos):', e); }
-});
+}));
 
 // ─── FLOTA VICUÑA ─────────────────────────────────────────────────────────
 const FLOTA_VICUNA = [
@@ -1196,7 +1208,7 @@ function defaultPlan(tipo) {
 }
 
 // Cargar plan desde Firebase, o usar default y subirlo
-refPlan.on('value', snap => {
+whenAuthReady(()=> refPlan.on('value', snap => {
   const data = snap.val();
   if (data && data.PM5 && data.PM10) {
     planData = data;
@@ -1205,12 +1217,12 @@ refPlan.on('value', snap => {
     refPlan.set(planData);
   }
   if (curTab === 'plan') render();
-});
+}));
 
-refRepuestos.on('value', snap => {
+whenAuthReady(()=> refRepuestos.on('value', snap => {
   const data = snap.val();
   repuestosData = data ? Object.values(data) : [];
-});
+}));
 
 function renderPlan(c) {
   if (!planData) {
@@ -1892,10 +1904,10 @@ function otSaveLocal(){
 }
 function otBindFirebase(){
   try {
-    db.ref('ordenes_trabajo').on('value', snap => {
+    whenAuthReady(()=> db.ref('ordenes_trabajo').on('value', snap => {
       const v = snap.val();
       if(v){ otData = v; otSaveLocal(); if(curTab==='inicio'||curTab==='flota') render(); }
-    });
+    }));
   } catch(e){ console.warn('OT firebase', e); }
 }
 function otPushFirebase(){
