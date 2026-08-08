@@ -2777,6 +2777,12 @@ function aplicarRol(){
     if(typeof render==='function') render();
   }
 
+  // Ocultar el/los botones de "Nuevo turno" para roles sin permiso de carga
+  const SIN_AGREGAR_TURNO = ['supervisor_vicuna'];
+  if(SIN_AGREGAR_TURNO.indexOf(userRole) > -1){
+    document.querySelectorAll('.btn-add-nav, .fab').forEach(b=> b.style.display='none');
+  }
+
   // Botón de salir en el header (para poder cambiar de usuario)
   if(!document.getElementById('logoutBtn')){
     const add = document.querySelector('.btn-add-nav');
