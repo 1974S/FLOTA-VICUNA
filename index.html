@@ -743,11 +743,24 @@ firebase.auth().signInAnonymously().catch(e=>console.error('Error de autenticaci
    userRole, si userRole no está declarado todavía el script se corta ahí
    con "Cannot access 'userRole' before initialization" y nunca llega a
    mostrar el login. Por eso esto tiene que declararse antes que nada. */
-const PIN_ADMIN = '1974';       // acceso completo
-const PIN_SUPERVISOR = '1984';  // solo turnos
-let userRole = null;  // 'admin' | 'supervisor'
+const PIN_ADMIN = '1974';              // acceso completo
+const PIN_SUPERVISOR = '1984';         // solo turnos
+const PIN_SUPERVISOR_VICUNA = '2026';  // Inicio + Flota + Plan PM, sin costos
+let userRole = null;  // 'admin' | 'supervisor' | 'supervisor_vicuna'
 function esAdmin(){ return userRole === 'admin'; }
 function esSupervisor(){ return userRole === 'supervisor'; }
+function esSupervisorVicuna(){ return userRole === 'supervisor_vicuna'; }
+// Ocultar costos: aplica al supervisor de Turnos y al supervisor Vicuña
+function ocultarCostos(){ return esSupervisor() || esSupervisorVicuna(); }
+// Pestañas visibles por rol — null = todas (admin)
+const TABS_POR_ROL = {
+  supervisor: ['turnos'],
+  supervisor_vicuna: ['inicio','flota','plan']
+};
+function tabPermitida(t){
+  const permitidas = TABS_POR_ROL[userRole];
+  return !permitidas || permitidas.indexOf(t) > -1;
+}
 
 const refTurnos = db.ref('turnos');
 const refPlan = db.ref('plan_pm');
@@ -911,8 +924,11 @@ function setTab(t, el) {
 
 function render() {
   const c = document.getElementById('content');
-  // Supervisor: solo puede ver Turnos
-  if(typeof esSupervisor==='function' && esSupervisor() && curTab!=='turnos'){ curTab='turnos'; }
+  // Forzar una pestaña permitida según el rol (admin: sin restricción)
+  if(typeof tabPermitida==='function' && !tabPermitida(curTab)){
+    const permitidas = TABS_POR_ROL[userRole];
+    if(permitidas && permitidas.length) curTab = permitidas[0];
+  }
   if      (curTab === 'inicio')    renderInicio(c);
   else if (curTab === 'turnos')    renderTurnos(c);
   else if (curTab === 'dashboard') renderDashboard(c);
@@ -961,7 +977,7 @@ function renderInicio(c) {
   }
 
   html += `</div>`;
-  html += (typeof otRenderGraficos==='function'?otRenderGraficos():'');
+  html += ((typeof otRenderGraficos==='function' && !(typeof ocultarCostos==='function' && ocultarCostos())) ? otRenderGraficos() : '');
   c.innerHTML = html;
   bindCards(c);
   c.querySelector('#mc-prev')?.addEventListener('click', () => { vDate = new Date(vDate.getFullYear(), vDate.getMonth()-1, 1); render(); });
@@ -1230,12 +1246,13 @@ function renderPlan(c) {
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
       <span style="font-size:12.5px;color:var(--text2);">Costo total estimado del PM</span>
-      <span style="font-size:16px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>
+      ${(typeof ocultarCostos==='function' && ocultarCostos()) ? '' : `<span style="font-size:16px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>`}
     </div>
     <div class="plan-card">`;
 
   data.forEach(t => {
     const repCount = (t.repuestos || []).length;
+    const ocultCost = (typeof ocultarCostos==='function' && ocultarCostos());
     html += `
       <div class="plan-row" style="flex-direction:column;align-items:stretch;gap:6px;padding:12px 14px;">
         <div style="display:flex;align-items:flex-start;gap:10px;">
@@ -1246,9 +1263,9 @@ function renderPlan(c) {
           </div>
           ${editMode ? `<button onclick="editTask('${t.id}')" style="background:none;border:none;font-size:16px;cursor:pointer;flex-shrink:0;">✏️</button><button onclick="deleteTask('${t.id}')" style="background:none;border:none;font-size:16px;cursor:pointer;flex-shrink:0;">🗑️</button>` : ''}
         </div>
-        ${(t.costo > 0 || t.tiempo || repCount > 0) ? `
+        ${((!ocultCost && t.costo > 0) || t.tiempo || repCount > 0) ? `
         <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--text3);padding-left:32px;">
-          ${t.costo > 0 ? `<span>💰 $${t.costo.toLocaleString('es-AR')}</span>` : ''}
+          ${(!ocultCost && t.costo > 0) ? `<span>💰 $${t.costo.toLocaleString('es-AR')}</span>` : ''}
           ${t.tiempo ? `<span>⏱ ${t.tiempo}</span>` : ''}
           ${repCount > 0 ? `<span>🔧 ${repCount} repuesto${repCount!==1?'s':''}</span>` : ''}
         </div>` : ''}
@@ -1636,13 +1653,13 @@ function openDet(id) {
         <div onclick="toggleEvTask('${t.id}')" style="width:20px;height:20px;border-radius:50%;border:2px solid ${t.done?'#34C759':'var(--border)'};background:${t.done?'#34C759':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:1px;">${t.done?'<span style="color:white;font-size:11px;">✓</span>':''}</div>
         <div style="flex:1;">
           <div style="font-size:13px;${t.done?'text-decoration:line-through;opacity:0.6;':''}"><span style="color:var(--text3);">${t.n}.</span> ${t.sys}</div>
-          ${(t.costo > 0 && !(typeof esSupervisor==='function' && esSupervisor())) ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">💰 $${t.costo.toLocaleString('es-AR')}${t.tiempo ? ' · ⏱ ' + t.tiempo : ''}</div>` : ''}
+          ${(t.costo > 0 && !(typeof ocultarCostos==='function' && ocultarCostos())) ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">💰 $${t.costo.toLocaleString('es-AR')}${t.tiempo ? ' · ⏱ ' + t.tiempo : ''}</div>` : ''}
         </div>
       </li>`).join('');
     costoHtml = `
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 14px;margin:10px 0;display:flex;justify-content:space-between;align-items:center;">
         <span style="font-size:12.5px;color:var(--text2);">${doneCount}/${e.checklist.length} completadas (${pct2}%)</span>
-        ${(typeof esSupervisor==='function' && esSupervisor()) ? '' : `<span style="font-size:15px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>`}
+        ${(typeof ocultarCostos==='function' && ocultarCostos()) ? '' : `<span style="font-size:15px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>`}
       </div>`;
   } else {
     tasksHtml = pm.tasks.map(t => `<li class="task-li">${t}</li>`).join('');
@@ -2694,7 +2711,7 @@ function generarInformeWord(){
 function accesoInit(){
   // recordar sesión en este dispositivo
   const saved = sessionStorage.getItem('fv_role');
-  if(saved === 'admin' || saved === 'supervisor'){ userRole = saved; aplicarRol(); return; }
+  if(saved === 'admin' || saved === 'supervisor' || saved === 'supervisor_vicuna'){ userRole = saved; aplicarRol(); return; }
   mostrarLogin();
 }
 
@@ -2723,6 +2740,7 @@ function validarPin(){
   const val = (inp?.value||'').trim();
   if(val === PIN_ADMIN){ userRole='admin'; }
   else if(val === PIN_SUPERVISOR){ userRole='supervisor'; }
+  else if(val === PIN_SUPERVISOR_VICUNA){ userRole='supervisor_vicuna'; }
   else { if(err) err.textContent='PIN incorrecto'; if(inp){ inp.value=''; inp.focus(); } return; }
   sessionStorage.setItem('fv_role', userRole);
   document.getElementById('loginOverlay')?.remove();
@@ -2734,23 +2752,27 @@ function accesoLogout(){
   location.reload();
 }
 
+const NOMBRE_ROL = { admin:'Admin', supervisor:'Supervisor', supervisor_vicuna:'Supervisor Vicuña' };
+
 // Aplica las restricciones visuales según el rol
 function aplicarRol(){
   document.body.setAttribute('data-role', userRole);
-  const esSup = (userRole === 'supervisor');
+  const permitidas = TABS_POR_ROL[userRole]; // null/undefined = sin restricción (admin)
 
-  // Ocultar pestañas para supervisor: solo deja Turnos
+  // Ocultar pestañas que no correspondan al rol
   document.querySelectorAll('.tab-btn').forEach(btn=>{
     const oc = btn.getAttribute('onclick')||'';
-    const esTurnos = oc.indexOf("setTab('turnos'") > -1;
-    btn.style.display = (esSup && !esTurnos) ? 'none' : '';
+    const m = oc.match(/setTab\('(\w+)'/);
+    const tabName = m ? m[1] : '';
+    const oculta = permitidas && permitidas.indexOf(tabName) === -1;
+    btn.style.display = oculta ? 'none' : '';
   });
 
-  if(esSup){
-    // forzar la vista de Turnos
-    curTab = 'turnos';
+  if(permitidas && permitidas.indexOf(curTab) === -1){
+    // la pestaña actual no está permitida: forzar a la primera permitida
+    curTab = permitidas[0];
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-    const tb = Array.from(document.querySelectorAll('.tab-btn')).find(b=>(b.getAttribute('onclick')||'').indexOf("setTab('turnos'")>-1);
+    const tb = Array.from(document.querySelectorAll('.tab-btn')).find(b=>(b.getAttribute('onclick')||'').indexOf("setTab('"+curTab+"'")>-1);
     if(tb) tb.classList.add('active');
     if(typeof render==='function') render();
   }
@@ -2761,7 +2783,7 @@ function aplicarRol(){
     if(add && add.parentElement){
       const lo = document.createElement('button');
       lo.id='logoutBtn'; lo.textContent='⏻';
-      lo.title = 'Salir ('+userRole+')';
+      lo.title = 'Salir ('+(NOMBRE_ROL[userRole]||userRole)+')';
       lo.setAttribute('aria-label','Salir');
       lo.style.cssText='background:rgba(255,255,255,.15);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:16px;margin-left:8px;cursor:pointer;';
       lo.onclick = accesoLogout;
