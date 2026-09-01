@@ -307,20 +307,21 @@ body {
 .mc-day.today {
   background: var(--red); color: white; font-weight: 700;
   border-radius: 50%; width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
   margin: auto; padding: 0;
 }
-.mc-day.has-ev::after {
-  content: ''; display: block; width: 6px; height: 6px;
-  background: var(--red); border-radius: 50%; margin: 2px auto 0;
-}
-.mc-day.has-cumpl::after { background: #0A6EBD; }
-.mc-day.today.has-ev::after { background: rgba(255,255,255,0.8); }
+.mc-dots { display: flex; justify-content: center; align-items: center; gap: 3px; min-height: 8px; margin-top: 2px; }
+.mc-dots span { width: 5px; height: 5px; border-radius: 50%; display: block; }
+.dot-red   { background: var(--red); }
+.dot-prev  { background: #34C759; }
+.dot-cumpl { background: #0A6EBD; }
+.mc-day.today .mc-dots span,
+.mc-day.sel .mc-dots span { background: rgba(255,255,255,0.85) !important; }
 .mc-day.om { opacity: 0.22; pointer-events: none; }
 .mc-day.sel:not(.today) {
   background: rgba(204,0,0,0.15); border: 1.5px solid var(--red);
   border-radius: 50%; width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
   margin: auto; padding: 0; color: var(--red); font-weight: 700;
 }
 
@@ -714,9 +715,12 @@ body {
     <button class="sheet-close" onclick="closeDet()">✕</button>
   </div>
   <div class="sheet-body" id="dBody"></div>
-  <div class="sheet-footer">
-    <button class="btn-danger" onclick="delEv()">Eliminar</button>
-    <button class="btn-primary" onclick="closeDet()">Cerrar</button>
+  <div class="sheet-footer" style="flex-direction:column;">
+    <button class="btn-primary" id="dCerrarBtn" onclick="toggleCumplidoEv()" style="width:100%;">Marcar como realizado</button>
+    <div style="display:flex;gap:10px;width:100%;">
+      <button class="btn-danger" onclick="delEv()" style="flex:1;">Eliminar</button>
+      <button class="btn-secondary" onclick="closeDet()" style="flex:1;">Cerrar</button>
+    </div>
   </div>
 </div>
 
@@ -1504,7 +1508,11 @@ function importRepuestos(event) {
 function buildCal(list) {
   const src = list || events;
   const y = vDate.getFullYear(), m = vDate.getMonth();
-  const evDates = new Set(src.map(e => e.fecha));
+  // Rojo: pendiente que no es preventivo (PM5/PM10/CORR/PRED)
+  const redDates = new Set(src.filter(e => !(e.origenOT || e.cumplido) && e.pm !== 'INSP').map(e => e.fecha));
+  // Verde: Inspección mensual pendiente (preventivo)
+  const prevDates = new Set(src.filter(e => e.pm === 'INSP' && !(e.origenOT || e.cumplido)).map(e => e.fecha));
+  // Azul: cualquier turno ya cumplido, sea cual sea el tipo
   const cumplDates = new Set(src.filter(e => e.origenOT || e.cumplido).map(e => e.fecha));
   const first = new Date(y,m,1).getDay();
   const days  = new Date(y,m+1,0).getDate();
@@ -1527,10 +1535,13 @@ function buildCal(list) {
     const ds  = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     let cls   = 'mc-day';
     if (d === td.getDate() && m === td.getMonth() && y === td.getFullYear()) cls += ' today';
-    if (evDates.has(ds)) cls += ' has-ev';
-    if (cumplDates.has(ds)) cls += ' has-cumpl';
     if (selDay === ds) cls += ' sel';
-    html += `<div class="${cls}" data-date="${ds}" onclick="selectDay('${ds}')">${d}</div>`;
+    let dots = '';
+    if (redDates.has(ds))   dots += '<span class="dot-red"></span>';
+    if (prevDates.has(ds))  dots += '<span class="dot-prev"></span>';
+    if (cumplDates.has(ds)) dots += '<span class="dot-cumpl"></span>';
+    const dotsHtml = dots ? `<div class="mc-dots">${dots}</div>` : '';
+    html += `<div class="${cls}" data-date="${ds}" onclick="selectDay('${ds}')">${d}${dotsHtml}</div>`;
   }
   const rem = 42 - first - days;
   for (let d = 1; d <= rem; d++) html += `<div class="mc-day om">${d}</div>`;
@@ -1696,6 +1707,27 @@ function openDet(id) {
     `<span class="badge ${pm.color}">${pm.label}</span>
      <span class="badge ${sc}">${st}</span>`;
 
+  // Botón de cerrar/reabrir: solo para turnos que no vienen de una OT
+  // importada (esos ya quedan "Cumplido" automáticamente al importarse).
+  const cerrarBtn = document.getElementById('dCerrarBtn');
+  if (cerrarBtn) {
+    if (e.origenOT) {
+      cerrarBtn.style.display = 'none';
+    } else {
+      cerrarBtn.style.display = '';
+      if (e.cumplido) {
+        cerrarBtn.textContent = '↺ Reabrir turno';
+        cerrarBtn.style.background = 'var(--bg)';
+        cerrarBtn.style.color = 'var(--text)';
+        cerrarBtn.style.border = '1.5px solid var(--border)';
+      } else {
+        cerrarBtn.textContent = '✓ Marcar como realizado';
+        cerrarBtn.style.background = '#34C759';
+        cerrarBtn.style.color = '#fff';
+        cerrarBtn.style.border = 'none';
+      }
+    }
+  }
   const kmBar = pm.km > 0 ? `
     <div class="km-bar-wrap">
       <div class="km-bar-labels">
@@ -1755,6 +1787,16 @@ function openDet(id) {
   document.getElementById('detOverlay').classList.add('open');
   document.getElementById('detSheet').classList.add('open');
   document.body.style.overflow = 'hidden';
+}
+
+function toggleCumplidoEv() {
+  const e = events.find(x => x.id === selId);
+  if (!e || e.origenOT) return; // los de OT se manejan solos
+  e.cumplido = !e.cumplido;
+  saveFirebase(e);
+  saveLS();
+  openDet(selId); // redibuja el panel con el nuevo estado
+  render();       // refresca calendario/lista de atrás
 }
 
 function toggleEvTask(taskId) {
