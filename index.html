@@ -1092,6 +1092,7 @@ function renderTurnos(c) {
       <input type="file" id="inputTurnosExcel" accept=".xlsx,.xls" style="display:none;" onchange="importarTurnosExcel(this.files[0])">
       <button onclick="openImportModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📥 Importar órdenes de trabajo (PDF)</button>
       <button onclick="convertirPredictivosAInsp()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir Predictivo → Inspección mensual</button>
+      <button onclick="corregirFechasOT2020()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🛠️ Corregir OT importadas con fecha en 2020</button>
       <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
       ` : ''}
     </div>
@@ -2024,9 +2025,11 @@ function otNum(s){
   s = String(s).replace('$','').replace('USD','').replace(/\./g,'').replace(',','.').trim();
   const n = parseFloat(s); return isNaN(n)?null:n;
 }
-function otFechaISO(f){ // "07/07/26" -> "2026-07-07"
-  const m = /(\d{2})\/(\d{2})\/(\d{2})/.exec(f||''); if(!m) return null;
-  return `20${m[3]}-${m[2]}-${m[1]}`;
+function otFechaISO(f){ // "07/07/26" o "07/07/2026" -> "2026-07-07"
+  const m = /(\d{2})\/(\d{2})\/(\d{2,4})/.exec(f||''); if(!m) return null;
+  let anio = m[3];
+  if (anio.length === 2) anio = '20' + anio;
+  return `${anio}-${m[2]}-${m[1]}`;
 }
 
 /* ---------- Parser (portado del Python validado) ---------- */
@@ -2051,7 +2054,7 @@ function otParseText(txt, archivo){
       m=/\bKm\s+(\d+)/.exec(l); if(m) d.km=parseInt(m[1]);
     }
     if(l.indexOf('Recepción')===0){
-      m=/Fecha\s*(\d{2}\/\d{2}\/\d{2})/.exec(l);
+      m=/Fecha\s*(\d{2}\/\d{2}\/\d{2,4})/.exec(l);
       if(m){ d.fecha=m[1]; }
     }
     if(l.indexOf('Asesor de Servicio')>-1) d.asesor=l.split('Asesor de Servicio').pop().trim();
@@ -2237,6 +2240,22 @@ function convertirPredictivosAInsp(){
   saveLS();
   render();
   alert(`Listo: ${afectados.length} turno(s) convertidos a Inspección mensual.`);
+}
+
+// Corrige las OT importadas antes del fix del parseo de fecha (año 4 dígitos):
+// esas quedaron guardadas con año 2020 en vez del año real de la OT (ej. 2026).
+function corregirFechasOT2020(){
+  const afectados = events.filter(e => e.origenOT && typeof e.fecha === 'string' && e.fecha.startsWith('2020-'));
+  if (!afectados.length) { alert('No se encontraron OT con este problema.'); return; }
+  const detalle = afectados.map(e => `${e.dom} — ${e.fecha}`).join('\n');
+  if (!confirm(`Se encontraron ${afectados.length} OT con la fecha mal calculada (año 2020):\n\n${detalle}\n\n¿Corregir el año a 2026 (mismo mes y día)?`)) return;
+  afectados.forEach(e => {
+    e.fecha = e.fecha.replace(/^2020-/, '2026-');
+    saveFirebase(e);
+  });
+  saveLS();
+  render();
+  alert(`Corregidas ${afectados.length} OT.`);
 }
 
 /* ---------- Modal de importación ---------- */
