@@ -1091,6 +1091,7 @@ function renderTurnos(c) {
       <button onclick="document.getElementById('inputTurnosExcel').click()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📅 Importar turnos mensuales (Excel)</button>
       <input type="file" id="inputTurnosExcel" accept=".xlsx,.xls" style="display:none;" onchange="importarTurnosExcel(this.files[0])">
       <button onclick="openImportModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📥 Importar órdenes de trabajo (PDF)</button>
+      <button onclick="convertirPredictivosAInsp()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir Predictivo → Inspección mensual</button>
       <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
       ` : ''}
     </div>
@@ -2219,6 +2220,23 @@ function importarTurnosExcel(file){
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Convierte de una todos los turnos cargados como "Predictivo" a "Inspección
+// mensual" — se usa una sola vez para corregir datos ya cargados con el tipo
+// viejo, no hace falta volver a tocarlo después.
+function convertirPredictivosAInsp(){
+  const afectados = events.filter(e => e.pm === 'PRED');
+  if (!afectados.length) { alert('No hay turnos cargados como Predictivo.'); return; }
+  if (!confirm(`Se van a convertir ${afectados.length} turno(s) de "Predictivo" a "Inspección mensual". ¿Confirmás?`)) return;
+  afectados.forEach(e => {
+    e.pm = 'INSP';
+    if (e.checklist) e.checklist = null; // para que tome el checklist de Inspección mensual, no el viejo de Predictivo
+    saveFirebase(e);
+  });
+  saveLS();
+  render();
+  alert(`Listo: ${afectados.length} turno(s) convertidos a Inspección mensual.`);
 }
 
 /* ---------- Modal de importación ---------- */
