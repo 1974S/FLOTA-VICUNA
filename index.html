@@ -2178,6 +2178,7 @@ function importarTurnosExcel(file){
 
         if (existente) {
           existente.fecha = fecha;
+          existente.pm = 'INSP'; // el importador siempre clasifica como Inspección mensual
           existente.area = area || existente.area;
           existente.vehiculo = vehiculo || existente.vehiculo;
           existente.año = año || existente.año;
