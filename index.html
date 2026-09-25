@@ -3070,8 +3070,29 @@ function renderDashboard(c) {
     return eDate<NOW_DAY || (pm && pm.km>0 && (e.kmA-e.kmU)>=pm.km*0.9);
   }).sort((a,b)=> new Date(a.fecha)-new Date(b.fecha)).slice(0,8);
 
+  // ---- Disponibilidad de la flota (mes en curso) ----
+  const mesActualKey = TODAY.getFullYear() + '-' + String(TODAY.getMonth()+1).padStart(2,'0');
+  const totalFlotaDisp = FLOTA_VICUNA.length;
+  const detProgSet = new Set(), detImprevSet = new Set();
+  evs.forEach(e=>{
+    if(!e.fecha || !e.fecha.startsWith(mesActualKey)) return;
+    if(e.pm==='CORR') detImprevSet.add(e.dom);
+    else if(e.pm==='PM5' || e.pm==='INSP' || e.pm==='PRED') detProgSet.add(e.dom);
+  });
+  const detenidasSet = new Set([...detProgSet, ...detImprevSet]);
+  const disponibilidadPct = totalFlotaDisp > 0 ? ((totalFlotaDisp - detenidasSet.size) / totalFlotaDisp * 100) : 100;
+  let nombreMesDisp = TODAY.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  nombreMesDisp = nombreMesDisp.charAt(0).toUpperCase() + nombreMesDisp.slice(1);
+  const dispColor = disponibilidadPct>=90 ? '#34C759' : (disponibilidadPct>=75 ? '#FF9500' : '#FF3B30');
+
   // ===== HTML =====
   let html = `<div style="padding:14px 16px 30px;">`;
+
+  html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:6px;">DISPONIBILIDAD DE LA FLOTA — ${nombreMesDisp}</div>
+    <div style="font-size:36px;font-weight:800;color:${dispColor};line-height:1.1;">${disponibilidadPct.toFixed(1)}%</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${detenidasSet.size} de ${totalFlotaDisp} unidades detenidas este mes — ${detProgSet.size} programadas, ${detImprevSet.size} por imprevistos</div>
+  </div>`;
 
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
   html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
