@@ -2257,18 +2257,45 @@ function convertirPM10aPM5(){
 
 // Corrige las OT importadas antes del fix del parseo de fecha (año 4 dígitos):
 // esas quedaron guardadas con año 2020 en vez del año real de la OT (ej. 2026).
+// Corrige tanto los turnos del calendario (events) como el historial de OT
+// por unidad (otData), que son dos bases separadas y ambas se vieron afectadas.
 function corregirFechasOT2020(){
   const afectados = events.filter(e => e.origenOT && typeof e.fecha === 'string' && e.fecha.startsWith('2020-'));
-  if (!afectados.length) { alert('No se encontraron OT con este problema.'); return; }
-  const detalle = afectados.map(e => `${e.dom} — ${e.fecha}`).join('\n');
-  if (!confirm(`Se encontraron ${afectados.length} OT con la fecha mal calculada (año 2020):\n\n${detalle}\n\n¿Corregir el año a 2026 (mismo mes y día)?`)) return;
+
+  const otAfectadas = [];
+  if (typeof otData !== 'undefined' && otData) {
+    Object.keys(otData).forEach(patente => {
+      (otData[patente]||[]).forEach(o => {
+        if (o.fecha_iso && typeof o.fecha_iso === 'string' && o.fecha_iso.startsWith('2020-')) {
+          otAfectadas.push({patente, o});
+        }
+      });
+    });
+  }
+
+  if (!afectados.length && !otAfectadas.length) { alert('No se encontraron OT con este problema.'); return; }
+
+  const detalle = [
+    ...afectados.map(e => `Turno: ${e.dom} — ${e.fecha}`),
+    ...otAfectadas.map(x => `Historial: ${x.patente} — ${x.o.fecha_iso}`)
+  ].join('\n');
+  if (!confirm(`Se encontraron ${afectados.length + otAfectadas.length} registro(s) con la fecha mal calculada (año 2020):\n\n${detalle}\n\n¿Corregir el año a 2026 (mismo mes y día)?`)) return;
+
   afectados.forEach(e => {
     e.fecha = e.fecha.replace(/^2020-/, '2026-');
     saveFirebase(e);
   });
+
+  otAfectadas.forEach(({o}) => {
+    o.fecha_iso = o.fecha_iso.replace(/^2020-/, '2026-');
+    const [Y,M,D] = o.fecha_iso.split('-');
+    o.fecha = `${D}/${M}/${Y.slice(2)}`; // mantiene el mismo formato corto que usa el resto de la app
+  });
+  if (otAfectadas.length) { otPushFirebase(); otSaveLocal(); }
+
   saveLS();
   render();
-  alert(`Corregidas ${afectados.length} OT.`);
+  alert(`Corregidos ${afectados.length + otAfectadas.length} registro(s) (${afectados.length} turno(s) de calendario, ${otAfectadas.length} del historial de OT).`);
 }
 
 /* ---------- Modal de importación ---------- */
