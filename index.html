@@ -3073,7 +3073,7 @@ function renderDashboard(c) {
   // ---- Indicadores de flota: mes en curso vs. mes anterior ----
   // Horas de detención estimadas por tipo de evento (no se registra hora exacta
   // de entrada/salida, así que se usa una duración fija acordada por tipo).
-  const HORAS_DETENCION = { PM5:4, INSP:2, CORR:1, PRED:1 };
+  const HORAS_DETENCION = { PM5:4, INSP:1, CORR:2, PRED:1 };
   const totalFlotaDisp = FLOTA_VICUNA.length;
 
   const mesActualKey = TODAY.getFullYear() + '-' + String(TODAY.getMonth()+1).padStart(2,'0');
@@ -3164,6 +3164,57 @@ function renderDashboard(c) {
       ${comp('Mes anterior', mttrHoras+' hs')}
     </div>
   </div>`;
+
+  // ---- Evolución mensual (últimos 3 meses, incluye el actual) ----
+  const mesesEvol = [];
+  for (let i=2; i>=0; i--) {
+    const ref = new Date(TODAY.getFullYear(), TODAY.getMonth()-i, 1);
+    const key = ref.getFullYear() + '-' + String(ref.getMonth()+1).padStart(2,'0');
+    const esActual = (i===0);
+    const dias = esActual ? diasTranscurridos : new Date(ref.getFullYear(), ref.getMonth()+1, 0).getDate();
+    const limite = key + '-' + String(dias).padStart(2,'0');
+    let nombre = ref.toLocaleDateString('es-AR',{month:'short'}).replace('.','');
+    nombre = nombre.charAt(0).toUpperCase() + nombre.slice(1);
+    mesesEvol.push({ key, nombre, ind: calcIndicadoresMes(key, dias, limite) });
+  }
+
+  function miniLineChart(titulo, puntos, color, sufijo){
+    const w=320, h=130, padL=8, padR=8, padT=18, padB=24;
+    const vals = puntos.map(p=>p.valor).filter(v=>v!==null && v!==undefined);
+    const vmax = vals.length ? Math.max(...vals) : 1;
+    const vminF = vals.length ? Math.min(0, Math.min(...vals)) : 0;
+    const range = (vmax - vminF) || 1;
+    const stepX = puntos.length>1 ? (w-padL-padR)/(puntos.length-1) : 0;
+    const coords = puntos.map((p,i)=>({
+      x: padL + i*stepX,
+      y: (p.valor===null||p.valor===undefined) ? null : (h-padB - ((p.valor-vminF)/range)*(h-padT-padB)),
+      ...p
+    }));
+    const valid = coords.filter(c=>c.y!==null);
+    const pathD = valid.map((c,i)=>(i===0?'M':'L')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' ');
+    let svg = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;">`;
+    if (valid.length>1) svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5"/>`;
+    coords.forEach(c=>{
+      if (c.y===null) return;
+      const vTxt = c.valor.toLocaleString('es-AR',{maximumFractionDigits: Math.abs(c.valor)<10 ? 2 : 0});
+      svg += `<circle cx="${c.x}" cy="${c.y}" r="4" fill="${color}"/>`;
+      svg += `<text x="${c.x}" y="${Math.max(12,c.y-9)}" font-size="11" fill="currentColor" text-anchor="middle" font-weight="700">${vTxt}${sufijo}</text>`;
+      svg += `<text x="${c.x}" y="${h-6}" font-size="10" fill="#8E8E93" text-anchor="middle">${c.label}</text>`;
+    });
+    svg += `</svg>`;
+    return `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 12px 8px;color:var(--text);">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:2px;">${titulo}</div>
+      ${svg}
+    </div>`;
+  }
+
+  html += `<div class="sec-hdr" style="margin:18px 0 12px;">Evolución mensual</div>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">`;
+  html += miniLineChart('DISPONIBILIDAD', mesesEvol.map(m=>({label:m.nombre, valor:m.ind.dispPct})), '#34C759', '%');
+  html += miniLineChart('MKBF PROGRAMADO', mesesEvol.map(m=>({label:m.nombre, valor:m.ind.mkbfProg})), '#0A6EBD', '');
+  html += miniLineChart('MKBF CORRECTIVOS', mesesEvol.map(m=>({label:m.nombre, valor:m.ind.mkbf})), '#FF9500', '');
+  html += miniLineChart('MTTR', mesesEvol.map(m=>({label:m.nombre, valor:mttrHoras})), '#5856D6', 'h');
+  html += `</div>`;
 
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
   html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
