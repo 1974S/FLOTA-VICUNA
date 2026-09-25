@@ -2355,6 +2355,7 @@ function importarRosterReparaciones(file){
       });
       const tecnicosDiaCount = tecnicosDia.length;
       const horasDisponiblesRoster = (tecnicosDiaCount>0 && horasPorDia) ? tecnicosDiaCount*horasPorDia*14 : null;
+      console.log('DIAGNÓSTICO roster:', { rosterFechaISO, tecnicosDia, tecnicosDiaCount, horasPorDia, grupo, turno, supervisor, horasDisponiblesRoster });
 
       // Encabezado de la tabla de tareas: busca la fila que empieza con "N° OT FREDDY"
       let headerIdx = -1;
@@ -3415,6 +3416,7 @@ function renderDashboard(c) {
     horasConsumidasPorRoster[key] = (horasConsumidasPorRoster[key]||0) + rep.horasHombre;
   });
   const fechasRosters = Array.from(new Set([...Object.keys(rostersMeta||{}).map(k=>rostersMeta[k].fecha), ...Object.keys(horasConsumidasPorRoster)])).sort().reverse();
+  console.log('DIAGNÓSTICO dashboard: rostersMeta =', JSON.parse(JSON.stringify(rostersMeta||{})), '| fechasRosters =', fechasRosters);
 
   if (fechasRosters.length) {
     let filasConsumidas = '', filasDisponibles = '';
@@ -3422,14 +3424,15 @@ function renderDashboard(c) {
       const meta = Object.values(rostersMeta||{}).find(m=>m.fecha===fecha) || null;
       const consumidas = horasConsumidasPorRoster[fecha] || 0;
       const disponibles = meta ? meta.horasDisponibles : null;
-      const fechaFmt = fecha.split('-').reverse().join('/');
+      const sup = meta ? (meta.supervisor||'') : '';
+      const apellido = /manzini/i.test(sup) ? 'Manzini' : (/quiroga/i.test(sup) ? 'Quiroga' : (sup || fecha.split('-').reverse().join('/')));
       filasConsumidas += `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-        <span style="color:var(--text2);">${fechaFmt}</span><span style="font-weight:700;color:var(--text);">${consumidas.toLocaleString('es-AR')} hs</span>
+        <span style="color:var(--text2);">${apellido}</span><span style="font-weight:700;color:var(--text);">${consumidas.toLocaleString('es-AR')} hs</span>
       </div>`;
       const pctUso = (disponibles) ? (consumidas/disponibles*100) : null;
       const usoColor = pctUso===null ? 'var(--text2)' : (pctUso<=100 ? '#34C759' : '#FF3B30');
       filasDisponibles += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-        <span style="color:var(--text2);">${fechaFmt}</span>
+        <span style="color:var(--text2);">${apellido}</span>
         <span style="text-align:right;"><strong style="color:var(--text);">${disponibles!==null?disponibles.toLocaleString('es-AR'):'—'} hs</strong>${pctUso!==null?` <span style="color:${usoColor};font-weight:700;">(${pctUso.toFixed(0)}%)</span>`:''}</span>
       </div>`;
     });
