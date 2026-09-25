@@ -3070,84 +3070,98 @@ function renderDashboard(c) {
     return eDate<NOW_DAY || (pm && pm.km>0 && (e.kmA-e.kmU)>=pm.km*0.9);
   }).sort((a,b)=> new Date(a.fecha)-new Date(b.fecha)).slice(0,8);
 
-  // ---- Disponibilidad de la flota (mes en curso, por horas) ----
+  // ---- Indicadores de flota: mes en curso vs. mes anterior ----
   // Horas de detención estimadas por tipo de evento (no se registra hora exacta
   // de entrada/salida, así que se usa una duración fija acordada por tipo).
   const HORAS_DETENCION = { PM5:4, INSP:2, CORR:1, PRED:1 };
-  const mesActualKey = TODAY.getFullYear() + '-' + String(TODAY.getMonth()+1).padStart(2,'0');
   const totalFlotaDisp = FLOTA_VICUNA.length;
+
+  const mesActualKey = TODAY.getFullYear() + '-' + String(TODAY.getMonth()+1).padStart(2,'0');
   const diasTranscurridos = TODAY.getDate(); // días del mes en curso ya pasados (incluye hoy)
-  let horasDetProg = 0, horasDetImprev = 0, evsDetProg = 0, evsDetImprev = 0;
-  evs.forEach(e=>{
-    if(!e.fecha || !e.fecha.startsWith(mesActualKey)) return;
-    const eDate = new Date(e.fecha+'T12:00:00');
-    if(eDate > TODAY) return; // todavía no ocurrió, no cuenta como detención ya sucedida
-    const horas = HORAS_DETENCION[e.pm];
-    if(horas===undefined) return;
-    if(e.pm==='CORR'){ horasDetImprev += horas; evsDetImprev++; }
-    else { horasDetProg += horas; evsDetProg++; }
-  });
-  const horasDetTotal = horasDetProg + horasDetImprev;
-  const horasDisponiblesTeoricas = totalFlotaDisp * 24 * diasTranscurridos;
-  const disponibilidadPct = horasDisponiblesTeoricas > 0
-    ? Math.max(0, (horasDisponiblesTeoricas - horasDetTotal) / horasDisponiblesTeoricas * 100)
-    : 100;
+  const fechaLimiteActual = mesActualKey + '-' + String(diasTranscurridos).padStart(2,'0');
+
+  const prevMonthRef = new Date(TODAY.getFullYear(), TODAY.getMonth()-1, 1);
+  const mesAnteriorKey = prevMonthRef.getFullYear() + '-' + String(prevMonthRef.getMonth()+1).padStart(2,'0');
+  const diasMesAnterior = new Date(prevMonthRef.getFullYear(), prevMonthRef.getMonth()+1, 0).getDate(); // mes completo, ya terminó
+  const fechaLimiteAnterior = mesAnteriorKey + '-' + String(diasMesAnterior).padStart(2,'0');
+
+  // Calcula disponibilidad/MKBF/MTTR para un mes dado (mesKey) hasta fechaLimite
+  // (hoy para el mes en curso, o el último día del mes si ya terminó).
+  function calcIndicadoresMes(mesKey, diasDelMes, fechaLimite){
+    let hProg=0, hImprev=0, eProg=0, eImprev=0;
+    evs.forEach(e=>{
+      if(!e.fecha || !e.fecha.startsWith(mesKey)) return;
+      if(e.fecha > fechaLimite) return; // todavía no ocurrió, no cuenta
+      const horas = HORAS_DETENCION[e.pm];
+      if(horas===undefined) return;
+      if(e.pm==='CORR'){ hImprev+=horas; eImprev++; } else { hProg+=horas; eProg++; }
+    });
+    const hTotal = hProg + hImprev;
+    const hDisp = totalFlotaDisp * 24 * diasDelMes;
+    const dispPct = hDisp>0 ? Math.max(0,(hDisp-hTotal)/hDisp*100) : 100;
+
+    // Km recorridos por la flota en ese mes (lecturas de km_efectivo de las OT):
+    // por patente, última lectura ANTES del mes vs. la más reciente hasta fechaLimite.
+    let kmRec=0, unidadesKm=0;
+    if (typeof otData !== 'undefined' && otData) {
+      const inicioStr = mesKey + '-01';
+      Object.keys(otData).forEach(patente=>{
+        const arr = (otData[patente]||[]).filter(o=>o.fecha_iso&&o.km_efectivo).sort((a,b)=>a.fecha_iso.localeCompare(b.fecha_iso));
+        let kmIni=null, kmFin=null;
+        arr.forEach(o=>{
+          if(o.fecha_iso < inicioStr) kmIni = o.km_efectivo;
+          if(o.fecha_iso <= fechaLimite) kmFin = o.km_efectivo;
+        });
+        if(kmIni!==null && kmFin!==null && kmFin>kmIni){ kmRec += (kmFin-kmIni); unidadesKm++; }
+      });
+    }
+    const mkbf = eImprev>0 ? (kmRec/eImprev) : null;
+    const mkbfProg = eProg>0 ? (kmRec/eProg) : null;
+    return { hProg, hImprev, hTotal, eProg, eImprev, hDisp, dispPct, kmRec, unidadesKm, mkbf, mkbfProg };
+  }
+
+  const indActual = calcIndicadoresMes(mesActualKey, diasTranscurridos, fechaLimiteActual);
+  const indAnterior = calcIndicadoresMes(mesAnteriorKey, diasMesAnterior, fechaLimiteAnterior);
+  const mttrHoras = HORAS_DETENCION.CORR; // duración fija estimada por correctivo — no varía de un mes a otro
+
   let nombreMesDisp = TODAY.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
   nombreMesDisp = nombreMesDisp.charAt(0).toUpperCase() + nombreMesDisp.slice(1);
-  const dispColor = disponibilidadPct>=99 ? '#34C759' : (disponibilidadPct>=97 ? '#FF9500' : '#FF3B30');
+  let nombreMesAnt = prevMonthRef.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+  nombreMesAnt = nombreMesAnt.charAt(0).toUpperCase() + nombreMesAnt.slice(1);
+  const dispColor = indActual.dispPct>=99 ? '#34C759' : (indActual.dispPct>=97 ? '#FF9500' : '#FF3B30');
+  const comp = (label, val) => `<div style="font-size:12px;color:var(--text3);margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">${label}: <strong style="color:var(--text2);">${val}</strong></div>`;
 
   // ===== HTML =====
   let html = `<div style="padding:14px 16px 30px;">`;
 
   html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;">
     <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:6px;">DISPONIBILIDAD DE LA FLOTA — ${nombreMesDisp}</div>
-    <div style="font-size:36px;font-weight:800;color:${dispColor};line-height:1.1;">${disponibilidadPct.toFixed(2)}%</div>
-    <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${horasDetTotal} hs de detención sobre ${horasDisponiblesTeoricas.toLocaleString('es-AR')} hs disponibles (${diasTranscurridos} días) — ${horasDetProg} hs / ${evsDetProg} programadas, ${horasDetImprev} hs / ${evsDetImprev} imprevistos</div>
+    <div style="font-size:36px;font-weight:800;color:${dispColor};line-height:1.1;">${indActual.dispPct.toFixed(2)}%</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${indActual.hTotal} hs de detención sobre ${indActual.hDisp.toLocaleString('es-AR')} hs disponibles (${diasTranscurridos} días) — ${indActual.hProg} hs / ${indActual.eProg} programadas, ${indActual.hImprev} hs / ${indActual.eImprev} imprevistos</div>
+    ${comp('Mes anterior ('+nombreMesAnt+')', indAnterior.dispPct.toFixed(2)+'%')}
   </div>`;
 
-  // ---- MKBF / MTTR (mismo período: mes en curso, hasta hoy) ----
-  // MKBF: km totales recorridos por la flota este mes ÷ cantidad de correctivos.
-  // Los km recorridos salen de las lecturas de km_efectivo de las OT importadas:
-  // por cada patente, se compara la última lectura ANTES de este mes con la más
-  // reciente hasta hoy. Si una unidad no tiene lectura previa al mes, no se puede
-  // establecer un punto de partida y se la deja afuera de la suma.
-  let kmRecorridosFlota = 0, unidadesConKm = 0;
-  if (typeof otData !== 'undefined' && otData) {
-    const inicioMesStr = mesActualKey + '-01';
-    Object.keys(otData).forEach(patente => {
-      const arr = (otData[patente]||[]).filter(o => o.fecha_iso && o.km_efectivo).sort((a,b)=> a.fecha_iso.localeCompare(b.fecha_iso));
-      let kmInicioMes = null, kmActual = null;
-      arr.forEach(o => {
-        if (o.fecha_iso < inicioMesStr) kmInicioMes = o.km_efectivo; // se queda con la última antes del mes
-        if (o.fecha_iso <= mesActualKey + '-' + String(diasTranscurridos).padStart(2,'0')) kmActual = o.km_efectivo; // la más reciente hasta hoy
-      });
-      if (kmInicioMes!==null && kmActual!==null && kmActual > kmInicioMes) {
-        kmRecorridosFlota += (kmActual - kmInicioMes);
-        unidadesConKm++;
-      }
-    });
-  }
-  const mkbfKm = evsDetImprev > 0 ? (kmRecorridosFlota / evsDetImprev) : null;
-  const mkbfProgKm = evsDetProg > 0 ? (kmRecorridosFlota / evsDetProg) : null;
-  const mttrHoras = HORAS_DETENCION.CORR; // duración fija estimada por correctivo (ver Disponibilidad)
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MKBF</div>
-      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mkbfKm!==null ? Math.round(mkbfKm).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre fallas${evsDetImprev>0 ? ` (${evsDetImprev} correctivo${evsDetImprev!==1?'s':''})` : ' — sin correctivos este mes'}</div>
+      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${indActual.mkbf!==null ? Math.round(indActual.mkbf).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre fallas${indActual.eImprev>0 ? ` (${indActual.eImprev} correctivo${indActual.eImprev!==1?'s':''})` : ' — sin correctivos este mes'}</div>
+      ${comp('Mes anterior', indAnterior.mkbf!==null ? Math.round(indAnterior.mkbf).toLocaleString('es-AR')+' km' : '—')}
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MKBF programado</div>
-      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mkbfProgKm!==null ? Math.round(mkbfProgKm).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre mantenimientos programados${evsDetProg>0 ? ` (${evsDetProg} evento${evsDetProg!==1?'s':''})` : ' — sin programados este mes'}</div>
+      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${indActual.mkbfProg!==null ? Math.round(indActual.mkbfProg).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre mantenimientos programados${indActual.eProg>0 ? ` (${indActual.eProg} evento${indActual.eProg!==1?'s':''})` : ' — sin programados este mes'}</div>
+      ${comp('Mes anterior', indAnterior.mkbfProg!==null ? Math.round(indAnterior.mkbfProg).toLocaleString('es-AR')+' km' : '—')}
     </div>
   </div>
-  <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${kmRecorridosFlota.toLocaleString('es-AR')} km recorridos por la flota este mes, en ${unidadesConKm} unidad${unidadesConKm!==1?'es':''} con lectura previa al mes</div>
+  <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${indActual.kmRec.toLocaleString('es-AR')} km recorridos por la flota este mes, en ${indActual.unidadesKm} unidad${indActual.unidadesKm!==1?'es':''} con lectura previa al mes · ${nombreMesAnt}: ${indAnterior.kmRec.toLocaleString('es-AR')} km en ${indAnterior.unidadesKm} unidad${indAnterior.unidadesKm!==1?'es':''}</div>
   <div style="margin-bottom:14px;">
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MTTR</div>
       <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mttrHoras}<span style="font-size:13px;font-weight:600;color:var(--text3);"> hs</span></div>
       <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Tiempo medio de reparación (estimado fijo por correctivo)</div>
+      ${comp('Mes anterior', mttrHoras+' hs')}
     </div>
   </div>`;
 
