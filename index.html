@@ -3105,6 +3105,22 @@ function renderDashboard(c) {
     <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${horasDetTotal} hs de detención sobre ${horasDisponiblesTeoricas.toLocaleString('es-AR')} hs disponibles (${diasTranscurridos} días) — ${horasDetProg} hs / ${evsDetProg} programadas, ${horasDetImprev} hs / ${evsDetImprev} imprevistos</div>
   </div>`;
 
+  // ---- MTBF / MTTR (mismo período: mes en curso, hasta hoy) ----
+  const mtbfHoras = evsDetImprev > 0 ? (horasDisponiblesTeoricas / evsDetImprev) : null;
+  const mttrHoras = HORAS_DETENCION.CORR; // duración fija estimada por correctivo (ver Disponibilidad)
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MTBF</div>
+      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mtbfHoras!==null ? mtbfHoras.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> hs</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Tiempo medio entre fallas${evsDetImprev>0 ? ` (${evsDetImprev} correctivo${evsDetImprev!==1?'s':''} este mes)` : ' — sin correctivos este mes'}</div>
+    </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MTTR</div>
+      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mttrHoras}<span style="font-size:13px;font-weight:600;color:var(--text3);"> hs</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Tiempo medio de reparación (estimado fijo por correctivo)</div>
+    </div>
+  </div>`;
+
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
   html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
 
