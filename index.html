@@ -1300,6 +1300,14 @@ whenAuthReady(()=> db.ref('reparaciones_reales').on('value', snap => {
   if (curTab === 'dashboard') render();
 }));
 
+// Metadatos de cada roster (técnicos de turno día, horas por día) — uno por
+// fecha de roster, para poder calcular horas hombre disponibles.
+let rostersMeta = {};
+whenAuthReady(()=> db.ref('rosters_meta').on('value', snap => {
+  rostersMeta = snap.val() || {};
+  if (curTab === 'dashboard') render();
+}));
+
 function renderPlan(c) {
   if (!planData) {
     c.innerHTML = `<div class="empty"><div class="empty-icon">⏳</div><div class="empty-txt">Cargando plan...</div></div>`;
@@ -2326,6 +2334,28 @@ function importarRosterReparaciones(file){
       }
       if (!rosterFechaISO) { alert('No encontré la fecha del roster (fila "Fecha") en la planilla.'); return; }
 
+      // Metadatos del roster: técnicos de turno día y horas por día, para
+      // calcular horas hombre disponibles (técnicos × horas × 14 días fijos).
+      let tecnicosDia = [], horasPorDia = null, grupo = '', turno = '', supervisor = '';
+      rows.forEach(r=>{
+        (r||[]).forEach(cell=>{
+          if (typeof cell==='string' && /^TECNICOS T\.?\s*D[IÍ]A/i.test(cell.trim())) {
+            const resto = cell.trim().replace(/^TECNICOS T\.?\s*D[IÍ]A\s*:?\s*/i, '');
+            tecnicosDia = resto.split(/[,\-]|(?:\s+y\s+)/i).map(s=>s.trim()).filter(Boolean);
+          }
+        });
+        if (typeof r[0]==='string' && r[0].trim().toLowerCase()==='grupo') grupo = r[1]!=null ? String(r[1]) : '';
+        if (typeof r[0]==='string' && r[0].trim().toLowerCase()==='turno') turno = r[1]!=null ? String(r[1]) : '';
+        if (typeof r[0]==='string' && r[0].trim().toLowerCase().startsWith('supervisor')) supervisor = r[1]!=null ? String(r[1]) : '';
+        for (let c=0;c<(r?r.length:0);c++){
+          if (typeof r[c]==='string' && /^Hs\.?\s*Hombre\s*t[eé]cnico/i.test(r[c].trim())) {
+            horasPorDia = parseHorasTexto(r[c+1]);
+          }
+        }
+      });
+      const tecnicosDiaCount = tecnicosDia.length;
+      const horasDisponiblesRoster = (tecnicosDiaCount>0 && horasPorDia) ? tecnicosDiaCount*horasPorDia*14 : null;
+
       // Encabezado de la tabla de tareas: busca la fila que empieza con "N° OT FREDDY"
       let headerIdx = -1;
       for (let i=0;i<rows.length;i++){
@@ -2373,11 +2403,21 @@ function importarRosterReparaciones(file){
 
       if (!cargados) { alert('No encontré filas de tareas para cargar en esta planilla.'); return; }
 
+      const idRoster = rosterFechaISO.replace(/[^a-zA-Z0-9_-]/g,'_');
+      const meta = {
+        fecha: rosterFechaISO, grupo, turno, supervisor,
+        tecnicosDia, tecnicosDiaCount, horasPorDia, dias: 14,
+        horasDisponibles: horasDisponiblesRoster
+      };
+
       db.ref('reparaciones_reales').update(registros);
+      db.ref('rosters_meta').child(idRoster).set(meta);
       Object.assign(reparacionesReales, registros); // refleja el cambio ya mismo, sin esperar el ida y vuelta de Firebase
+      rostersMeta[idRoster] = meta;
       render();
       document.getElementById('inputRosterRep').value = '';
-      alert(`Roster del ${rosterFechaISO.split('-').reverse().join('/')} cargado: ${cargados} reparación${cargados!==1?'es':''}.`);
+      const dispTxt = horasDisponiblesRoster!==null ? ` — ${horasDisponiblesRoster} hs hombre disponibles (${tecnicosDiaCount} técnico${tecnicosDiaCount!==1?'s':''} × ${horasPorDia}hs × 14 días)` : ' — no pude calcular las horas hombre disponibles (revisá que la planilla tenga "TECNICOS T. DIA" y "Hs. Hombre tecnico")';
+      alert(`Roster del ${rosterFechaISO.split('-').reverse().join('/')} cargado: ${cargados} reparación${cargados!==1?'es':''}.${dispTxt}`);
     } catch(err) {
       console.error('Error importando roster de reparaciones:', err);
       alert('No se pudo leer el archivo. Verificá que sea el Excel de "Cambio de Turno / Fin de Roster" sin modificar los encabezados.');
@@ -3366,6 +3406,47 @@ function renderDashboard(c) {
       ${comp('Mes anterior', mttrAnteriorVal.toLocaleString('es-AR',{maximumFractionDigits:2})+' hs'+(indAnterior.mttrReal!==null?' (real)':' (estimado)'))}
     </div>
   </div>`;
+
+  // ---- Horas hombre: consumidas vs. disponibles, por roster ----
+  const horasConsumidasPorRoster = {};
+  Object.values(reparacionesReales||{}).forEach(rep=>{
+    if (typeof rep.horasHombre!=='number') return;
+    const key = rep.rosterFecha || '¿?';
+    horasConsumidasPorRoster[key] = (horasConsumidasPorRoster[key]||0) + rep.horasHombre;
+  });
+  const fechasRosters = Array.from(new Set([...Object.keys(rostersMeta||{}).map(k=>rostersMeta[k].fecha), ...Object.keys(horasConsumidasPorRoster)])).sort().reverse();
+
+  if (fechasRosters.length) {
+    let filasConsumidas = '', filasDisponibles = '';
+    fechasRosters.forEach(fecha=>{
+      const meta = Object.values(rostersMeta||{}).find(m=>m.fecha===fecha) || null;
+      const consumidas = horasConsumidasPorRoster[fecha] || 0;
+      const disponibles = meta ? meta.horasDisponibles : null;
+      const fechaFmt = fecha.split('-').reverse().join('/');
+      filasConsumidas += `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+        <span style="color:var(--text2);">${fechaFmt}</span><span style="font-weight:700;color:var(--text);">${consumidas.toLocaleString('es-AR')} hs</span>
+      </div>`;
+      const pctUso = (disponibles) ? (consumidas/disponibles*100) : null;
+      const usoColor = pctUso===null ? 'var(--text2)' : (pctUso<=100 ? '#34C759' : '#FF3B30');
+      filasDisponibles += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
+        <span style="color:var(--text2);">${fechaFmt}</span>
+        <span style="text-align:right;"><strong style="color:var(--text);">${disponibles!==null?disponibles.toLocaleString('es-AR'):'—'} hs</strong>${pctUso!==null?` <span style="color:${usoColor};font-weight:700;">(${pctUso.toFixed(0)}%)</span>`:''}</span>
+      </div>`;
+    });
+
+    html += `<div class="sec-hdr" style="margin:18px 0 12px;">Horas hombre por roster</div>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
+        <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">HORAS HOMBRE CONSUMIDAS</div>
+        ${filasConsumidas}
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
+        <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">HORAS HOMBRE DISPONIBLES</div>
+        ${filasDisponibles}
+        <div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Técnicos de turno día × hs. por día × 14 días. % = utilización sobre lo disponible.</div>
+      </div>
+    </div>`;
+  }
 
   // ---- Evolución mensual: tabla con los 12 meses del año en curso ----
   const mesesEvol = [];
