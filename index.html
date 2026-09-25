@@ -3070,28 +3070,39 @@ function renderDashboard(c) {
     return eDate<NOW_DAY || (pm && pm.km>0 && (e.kmA-e.kmU)>=pm.km*0.9);
   }).sort((a,b)=> new Date(a.fecha)-new Date(b.fecha)).slice(0,8);
 
-  // ---- Disponibilidad de la flota (mes en curso) ----
+  // ---- Disponibilidad de la flota (mes en curso, por horas) ----
+  // Horas de detención estimadas por tipo de evento (no se registra hora exacta
+  // de entrada/salida, así que se usa una duración fija acordada por tipo).
+  const HORAS_DETENCION = { PM5:4, INSP:2, CORR:1, PRED:1 };
   const mesActualKey = TODAY.getFullYear() + '-' + String(TODAY.getMonth()+1).padStart(2,'0');
   const totalFlotaDisp = FLOTA_VICUNA.length;
-  const detProgSet = new Set(), detImprevSet = new Set();
+  const diasTranscurridos = TODAY.getDate(); // días del mes en curso ya pasados (incluye hoy)
+  let horasDetProg = 0, horasDetImprev = 0, evsDetProg = 0, evsDetImprev = 0;
   evs.forEach(e=>{
     if(!e.fecha || !e.fecha.startsWith(mesActualKey)) return;
-    if(e.pm==='CORR') detImprevSet.add(e.dom);
-    else if(e.pm==='PM5' || e.pm==='INSP' || e.pm==='PRED') detProgSet.add(e.dom);
+    const eDate = new Date(e.fecha+'T12:00:00');
+    if(eDate > TODAY) return; // todavía no ocurrió, no cuenta como detención ya sucedida
+    const horas = HORAS_DETENCION[e.pm];
+    if(horas===undefined) return;
+    if(e.pm==='CORR'){ horasDetImprev += horas; evsDetImprev++; }
+    else { horasDetProg += horas; evsDetProg++; }
   });
-  const detenidasSet = new Set([...detProgSet, ...detImprevSet]);
-  const disponibilidadPct = totalFlotaDisp > 0 ? ((totalFlotaDisp - detenidasSet.size) / totalFlotaDisp * 100) : 100;
+  const horasDetTotal = horasDetProg + horasDetImprev;
+  const horasDisponiblesTeoricas = totalFlotaDisp * 24 * diasTranscurridos;
+  const disponibilidadPct = horasDisponiblesTeoricas > 0
+    ? Math.max(0, (horasDisponiblesTeoricas - horasDetTotal) / horasDisponiblesTeoricas * 100)
+    : 100;
   let nombreMesDisp = TODAY.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
   nombreMesDisp = nombreMesDisp.charAt(0).toUpperCase() + nombreMesDisp.slice(1);
-  const dispColor = disponibilidadPct>=90 ? '#34C759' : (disponibilidadPct>=75 ? '#FF9500' : '#FF3B30');
+  const dispColor = disponibilidadPct>=99 ? '#34C759' : (disponibilidadPct>=97 ? '#FF9500' : '#FF3B30');
 
   // ===== HTML =====
   let html = `<div style="padding:14px 16px 30px;">`;
 
   html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;">
     <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:6px;">DISPONIBILIDAD DE LA FLOTA — ${nombreMesDisp}</div>
-    <div style="font-size:36px;font-weight:800;color:${dispColor};line-height:1.1;">${disponibilidadPct.toFixed(1)}%</div>
-    <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${detenidasSet.size} de ${totalFlotaDisp} unidades detenidas este mes — ${detProgSet.size} programadas, ${detImprevSet.size} por imprevistos</div>
+    <div style="font-size:36px;font-weight:800;color:${dispColor};line-height:1.1;">${disponibilidadPct.toFixed(2)}%</div>
+    <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${horasDetTotal} hs de detención sobre ${horasDisponiblesTeoricas.toLocaleString('es-AR')} hs disponibles (${diasTranscurridos} días) — ${horasDetProg} hs / ${evsDetProg} programadas, ${horasDetImprev} hs / ${evsDetImprev} imprevistos</div>
   </div>`;
 
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
