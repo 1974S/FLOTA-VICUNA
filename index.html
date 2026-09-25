@@ -3105,14 +3105,35 @@ function renderDashboard(c) {
     <div style="font-size:12.5px;color:var(--text2);margin-top:4px;">${horasDetTotal} hs de detención sobre ${horasDisponiblesTeoricas.toLocaleString('es-AR')} hs disponibles (${diasTranscurridos} días) — ${horasDetProg} hs / ${evsDetProg} programadas, ${horasDetImprev} hs / ${evsDetImprev} imprevistos</div>
   </div>`;
 
-  // ---- MTBF / MTTR (mismo período: mes en curso, hasta hoy) ----
-  const mtbfHoras = evsDetImprev > 0 ? (horasDisponiblesTeoricas / evsDetImprev) : null;
+  // ---- MKBF / MTTR (mismo período: mes en curso, hasta hoy) ----
+  // MKBF: km totales recorridos por la flota este mes ÷ cantidad de correctivos.
+  // Los km recorridos salen de las lecturas de km_efectivo de las OT importadas:
+  // por cada patente, se compara la última lectura ANTES de este mes con la más
+  // reciente hasta hoy. Si una unidad no tiene lectura previa al mes, no se puede
+  // establecer un punto de partida y se la deja afuera de la suma.
+  let kmRecorridosFlota = 0, unidadesConKm = 0;
+  if (typeof otData !== 'undefined' && otData) {
+    const inicioMesStr = mesActualKey + '-01';
+    Object.keys(otData).forEach(patente => {
+      const arr = (otData[patente]||[]).filter(o => o.fecha_iso && o.km_efectivo).sort((a,b)=> a.fecha_iso.localeCompare(b.fecha_iso));
+      let kmInicioMes = null, kmActual = null;
+      arr.forEach(o => {
+        if (o.fecha_iso < inicioMesStr) kmInicioMes = o.km_efectivo; // se queda con la última antes del mes
+        if (o.fecha_iso <= mesActualKey + '-' + String(diasTranscurridos).padStart(2,'0')) kmActual = o.km_efectivo; // la más reciente hasta hoy
+      });
+      if (kmInicioMes!==null && kmActual!==null && kmActual > kmInicioMes) {
+        kmRecorridosFlota += (kmActual - kmInicioMes);
+        unidadesConKm++;
+      }
+    });
+  }
+  const mkbfKm = evsDetImprev > 0 ? (kmRecorridosFlota / evsDetImprev) : null;
   const mttrHoras = HORAS_DETENCION.CORR; // duración fija estimada por correctivo (ver Disponibilidad)
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
-      <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MTBF</div>
-      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mtbfHoras!==null ? mtbfHoras.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> hs</span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Tiempo medio entre fallas${evsDetImprev>0 ? ` (${evsDetImprev} correctivo${evsDetImprev!==1?'s':''} este mes)` : ' — sin correctivos este mes'}</div>
+      <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MKBF</div>
+      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mkbfKm!==null ? Math.round(mkbfKm).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre fallas${evsDetImprev>0 ? ` (${kmRecorridosFlota.toLocaleString('es-AR')} km en ${unidadesConKm} unidades, ${evsDetImprev} correctivo${evsDetImprev!==1?'s':''})` : ' — sin correctivos este mes'}</div>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MTTR</div>
