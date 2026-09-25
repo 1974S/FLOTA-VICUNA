@@ -630,7 +630,6 @@ body {
       <select class="fs" id="fPM" onchange="updateSvcInfo()">
         <option value="">Seleccionar tipo...</option>
         <option value="PM5">PM 5.000 km</option>
-        <option value="PM10">PM 10.000 km</option>
         <option value="INSP">Inspección mensual</option>
         <option value="CORR">Correctivo — Reparación imprevista</option>
         <option value="PRED">Predictivo — Análisis de fluidos</option>
@@ -1093,6 +1092,7 @@ function renderTurnos(c) {
       <input type="file" id="inputTurnosExcel" accept=".xlsx,.xls" style="display:none;" onchange="importarTurnosExcel(this.files[0])">
       <button onclick="openImportModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📥 Importar órdenes de trabajo (PDF)</button>
       <button onclick="convertirPredictivosAInsp()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir Predictivo → Inspección mensual</button>
+      <button onclick="convertirPM10aPM5()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir PM 10.000 km → PM 5.000 km</button>
       <button onclick="corregirFechasOT2020()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🛠️ Corregir OT importadas con fecha en 2020</button>
       <button onclick="openPresupuestoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💰 Generar presupuesto</button>
       <button onclick="openRemitoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📦 Generar remito</button>
@@ -1292,18 +1292,12 @@ function renderPlan(c) {
     return;
   }
   const data = planData[planSub] || [];
-  const titulo = planSub === 'PM5' ? 'PM 5.000 km' : 'PM 10.000 km';
-  const nota = planSub === 'PM5'
-    ? 'Uso severo: cambio cada 5.000 km. 1 hora de ralentí equivale a 70 km recorridos (alta montaña).'
-    : 'Vehículos diésel. (*) Uso severo: cambio c/5.000 km · (**) inspección c/5.000 km · (***) cambio c/20.000 km.';
+  const titulo = 'PM 5.000 km';
+  const nota = 'Uso severo: cambio cada 5.000 km. 1 hora de ralentí equivale a 70 km recorridos (alta montaña).';
 
   const totalCosto = data.reduce((s, t) => s + (t.costo || 0), 0);
 
   let html = `
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
-      <button onclick="setPlanSub('PM5')" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid ${planSub==='PM5'?'var(--red)':'var(--border)'};background:${planSub==='PM5'?'var(--red)':'var(--card)'};color:${planSub==='PM5'?'#fff':'var(--text)'};font-weight:700;font-size:13px;">PM 5.000 km</button>
-      <button onclick="setPlanSub('PM10')" style="flex:1;padding:10px;border-radius:10px;border:1.5px solid ${planSub==='PM10'?'var(--red)':'var(--border)'};background:${planSub==='PM10'?'var(--red)':'var(--card)'};color:${planSub==='PM10'?'#fff':'var(--text)'};font-weight:700;font-size:13px;">PM 10.000 km</button>
-    </div>
     <div style="font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5;">
       <strong style="color:var(--text);">${titulo}</strong> — Plan oficial Freddy El Taller · Proyecto Vicuña<br>
       <span style="font-size:12px;color:var(--text3);">${nota}</span>
@@ -2245,6 +2239,22 @@ function convertirPredictivosAInsp(){
   alert(`Listo: ${afectados.length} turno(s) convertidos a Inspección mensual.`);
 }
 
+// Convierte de una todos los turnos cargados como "PM 10.000 km" a "PM 5.000 km"
+// — la app ahora trabaja solo con PM 5.000 km en todos lados.
+function convertirPM10aPM5(){
+  const afectados = events.filter(e => e.pm === 'PM10');
+  if (!afectados.length) { alert('No hay turnos cargados como PM 10.000 km.'); return; }
+  if (!confirm(`Se van a convertir ${afectados.length} turno(s) de "PM 10.000 km" a "PM 5.000 km". ¿Confirmás?`)) return;
+  afectados.forEach(e => {
+    e.pm = 'PM5';
+    if (e.checklist) e.checklist = null; // para que tome el checklist de PM 5.000 km, no el viejo de PM 10.000 km
+    saveFirebase(e);
+  });
+  saveLS();
+  render();
+  alert(`Listo: ${afectados.length} turno(s) convertidos a PM 5.000 km.`);
+}
+
 // Corrige las OT importadas antes del fix del parseo de fecha (año 4 dígitos):
 // esas quedaron guardadas con año 2020 en vez del año real de la OT (ej. 2026).
 function corregirFechasOT2020(){
@@ -2819,7 +2829,7 @@ function otConfirmImport(){
       if(!existe){
         const veh = (FLOTA_VICUNA.find(v=>v.patente===p)||{}).vehiculo || o.modelo || '';
         const km = o.km_efectivo||0;
-        const pmCode = o.tipo==='PM' ? 'PM10' : (o.tipo==='Correctivo' ? 'CORR' : 'CORR');
+        const pmCode = o.tipo==='PM' ? 'PM5' : (o.tipo==='Correctivo' ? 'CORR' : 'CORR');
         const nid = Date.now() + Math.floor(Math.random()*100000) + Math.floor(Math.random()*1000);
         const turno = {
           id: nid,
@@ -3058,7 +3068,6 @@ function renderDashboard(c) {
   html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
     <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:12px;">TIPOS DE PM</div>
     ${pmBar('PM 5.000 km',tipo.PM5,'#34C759')}
-    ${pmBar('PM 10.000 km',tipo.PM10,'#0A6EBD')}
     ${pmBar('Correctivo',tipo.CORR,'#5856D6')}
     ${pmBar('Predictivo',tipo.PRED,'#00BCD4')}
   </div>`;
