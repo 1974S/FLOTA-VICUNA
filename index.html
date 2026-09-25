@@ -3128,13 +3128,22 @@ function renderDashboard(c) {
     });
   }
   const mkbfKm = evsDetImprev > 0 ? (kmRecorridosFlota / evsDetImprev) : null;
+  const mkbfProgKm = evsDetProg > 0 ? (kmRecorridosFlota / evsDetProg) : null;
   const mttrHoras = HORAS_DETENCION.CORR; // duración fija estimada por correctivo (ver Disponibilidad)
-  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MKBF</div>
       <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mkbfKm!==null ? Math.round(mkbfKm).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre fallas${evsDetImprev>0 ? ` (${kmRecorridosFlota.toLocaleString('es-AR')} km en ${unidadesConKm} unidades, ${evsDetImprev} correctivo${evsDetImprev!==1?'s':''})` : ' — sin correctivos este mes'}</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre fallas${evsDetImprev>0 ? ` (${evsDetImprev} correctivo${evsDetImprev!==1?'s':''})` : ' — sin correctivos este mes'}</div>
     </div>
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MKBF programado</div>
+      <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mkbfProgKm!==null ? Math.round(mkbfProgKm).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre mantenimientos programados${evsDetProg>0 ? ` (${evsDetProg} evento${evsDetProg!==1?'s':''})` : ' — sin programados este mes'}</div>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${kmRecorridosFlota.toLocaleString('es-AR')} km recorridos por la flota este mes, en ${unidadesConKm} unidad${unidadesConKm!==1?'es':''} con lectura previa al mes</div>
+  <div style="margin-bottom:14px;">
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MTTR</div>
       <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${mttrHoras}<span style="font-size:13px;font-weight:600;color:var(--text3);"> hs</span></div>
