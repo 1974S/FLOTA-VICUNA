@@ -2355,7 +2355,6 @@ function importarRosterReparaciones(file){
       });
       const tecnicosDiaCount = tecnicosDia.length;
       const horasDisponiblesRoster = horasPorDia ? horasPorDia*14 : null; // solo turno día: hs. por día × 14 días (sin multiplicar por técnicos)
-      console.log('DIAGNÓSTICO roster:', { rosterFechaISO, tecnicosDia, tecnicosDiaCount, horasPorDia, grupo, turno, supervisor, horasDisponiblesRoster });
 
       // Encabezado de la tabla de tareas: busca la fila que empieza con "N° OT FREDDY"
       let headerIdx = -1;
@@ -3416,7 +3415,6 @@ function renderDashboard(c) {
     horasConsumidasPorRoster[key] = (horasConsumidasPorRoster[key]||0) + rep.horasHombre;
   });
   const fechasRosters = Array.from(new Set([...Object.keys(rostersMeta||{}).map(k=>rostersMeta[k].fecha), ...Object.keys(horasConsumidasPorRoster)])).sort().reverse();
-  console.log('DIAGNÓSTICO dashboard: rostersMeta =', JSON.parse(JSON.stringify(rostersMeta||{})), '| fechasRosters =', fechasRosters);
 
   if (fechasRosters.length) {
     let filasConsumidas = '', filasDisponibles = '';
@@ -3432,7 +3430,7 @@ function renderDashboard(c) {
       const pctUso = (disponibles) ? (consumidas/disponibles*100) : null;
       const usoColor = pctUso===null ? 'var(--text2)' : (pctUso<=100 ? '#34C759' : '#FF3B30');
       filasDisponibles += `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;">
-        <span style="color:var(--text2);">${apellido}</span>
+        <span style="color:var(--text2);">Horas disponibles</span>
         <span style="text-align:right;"><strong style="color:var(--text);">${disponibles!==null?disponibles.toLocaleString('es-AR'):'—'} hs</strong>${pctUso!==null?` <span style="color:${usoColor};font-weight:700;">(${pctUso.toFixed(0)}%)</span>`:''}</span>
       </div>`;
     });
