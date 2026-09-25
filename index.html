@@ -2354,7 +2354,7 @@ function importarRosterReparaciones(file){
         }
       });
       const tecnicosDiaCount = tecnicosDia.length;
-      const horasDisponiblesRoster = (tecnicosDiaCount>0 && horasPorDia) ? tecnicosDiaCount*horasPorDia*14 : null;
+      const horasDisponiblesRoster = horasPorDia ? horasPorDia*14 : null; // solo turno día: hs. por día × 14 días (sin multiplicar por técnicos)
       console.log('DIAGNÓSTICO roster:', { rosterFechaISO, tecnicosDia, tecnicosDiaCount, horasPorDia, grupo, turno, supervisor, horasDisponiblesRoster });
 
       // Encabezado de la tabla de tareas: busca la fila que empieza con "N° OT FREDDY"
@@ -2417,7 +2417,7 @@ function importarRosterReparaciones(file){
       rostersMeta[idRoster] = meta;
       render();
       document.getElementById('inputRosterRep').value = '';
-      const dispTxt = horasDisponiblesRoster!==null ? ` — ${horasDisponiblesRoster} hs hombre disponibles (${tecnicosDiaCount} técnico${tecnicosDiaCount!==1?'s':''} × ${horasPorDia}hs × 14 días)` : ' — no pude calcular las horas hombre disponibles (revisá que la planilla tenga "TECNICOS T. DIA" y "Hs. Hombre tecnico")';
+      const dispTxt = horasDisponiblesRoster!==null ? ` — ${horasDisponiblesRoster} hs disponibles (turno día: ${horasPorDia}hs × 14 días)` : ' — no pude calcular las horas disponibles (revisá que la planilla tenga "Hs. Hombre tecnico")';
       alert(`Roster del ${rosterFechaISO.split('-').reverse().join('/')} cargado: ${cargados} reparación${cargados!==1?'es':''}.${dispTxt}`);
     } catch(err) {
       console.error('Error importando roster de reparaciones:', err);
@@ -3446,7 +3446,7 @@ function renderDashboard(c) {
       <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
         <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">HORAS HOMBRE DISPONIBLES</div>
         ${filasDisponibles}
-        <div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Técnicos de turno día × hs. por día × 14 días. % = utilización sobre lo disponible.</div>
+        <div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Solo turno día: hs. por día × 14 días. % = utilización sobre lo disponible.</div>
       </div>
     </div>`;
   }
