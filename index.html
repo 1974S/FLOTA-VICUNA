@@ -3561,6 +3561,11 @@ function renderDashboard(c) {
   }
   const pctLugar = (n,t) => t>0 ? Math.round(n/t*1000)/10 : null;
   const fmtPct = p => p===null ? '—' : p.toLocaleString('es-AR',{maximumFractionDigits:1})+'%';
+  // Barra azul (Sede) / naranja (Mina) con el porcentaje escrito adentro de cada tramo.
+  const barraLugar = (pS, pM) => `<div style="display:flex;height:22px;border-radius:8px;overflow:hidden;background:var(--bg);">
+    <div style="width:${pS||0}%;background:#0A6EBD;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;">${(pS||0)>=10 ? fmtPct(pS) : ''}</div>
+    <div style="width:${pM||0}%;background:#FF9500;display:flex;align-items:center;justify-content:center;color:#1a1a1a;font-size:11px;font-weight:700;">${(pM||0)>=10 ? fmtPct(pM) : ''}</div>
+  </div>`;
 
   const lugActual = contarLugarMes(mesActualKey);
   const lugAnterior = contarLugarMes(mesAnteriorKey);
@@ -3571,10 +3576,7 @@ function renderDashboard(c) {
   html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;">
     <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:10px;">ÓRDENES DE TRABAJO — ${nombreMesDisp}</div>
     ${lugActual.total>0 ? `
-    <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--bg);margin-bottom:12px;">
-      <div style="width:${pSedeAct}%;background:#0A6EBD;"></div>
-      <div style="width:${pMinaAct}%;background:#FF9500;"></div>
-    </div>
+    <div style="margin-bottom:12px;">${barraLugar(pSedeAct,pMinaAct)}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div style="font-size:11.5px;color:var(--text3);"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#0A6EBD;margin-right:5px;"></span>Sede (taller San Juan)</div>
@@ -3587,7 +3589,11 @@ function renderDashboard(c) {
         <div style="font-size:11.5px;color:var(--text2);">${lugActual.mina} orden${lugActual.mina!==1?'es':''}</div>
       </div>
     </div>` : `<div style="font-size:13px;color:var(--text2);">Todavía no hay órdenes de trabajo cargadas este mes.</div>`}
-    ${comp('Mes anterior ('+nombreMesAnt+')', lugAnterior.total>0 ? `Sede ${fmtPct(pSedeAnt)} · Mina ${fmtPct(pMinaAnt)} (${lugAnterior.total} órdenes)` : 'sin órdenes cargadas')}
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:6px;"><span>Mes anterior — ${nombreMesAnt}</span><span>${lugAnterior.total>0 ? lugAnterior.total+' órdenes' : ''}</span></div>
+      ${lugAnterior.total>0 ? `${barraLugar(pSedeAnt,pMinaAnt)}
+      <div style="font-size:11.5px;color:var(--text2);margin-top:6px;">Sede ${fmtPct(pSedeAnt)} <span style="color:var(--text3);">(${lugAnterior.sede})</span> · Mina ${fmtPct(pMinaAnt)} <span style="color:var(--text3);">(${lugAnterior.mina})</span></div>` : `<div style="font-size:12.5px;color:var(--text2);">Sin órdenes cargadas ese mes.</div>`}
+    </div>
     <div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Se clasifica por el nombre: Sede = OT de Diego Ares; Mina = OT de Manzini o Quiroga (se mira el asesor de servicio y, si no figura, el técnico o supervisor; como último recurso, el sector). Entre las dos suman el 100% de las intervenciones.${lugActual.sin>0 ? ` ${lugActual.sin} orden${lugActual.sin!==1?'es':''} de este mes sin poder clasificar (no figura técnico ni sector).` : ''}</div>
   </div>`;
 
