@@ -3631,8 +3631,8 @@ function renderDashboard(c) {
   // duplicar lo que ya está en los rosters.
   const SISTEMAS_REP = [
     {cod:'02', nombre:'MOTOR', re:/turbo|inyect|sensor map|baja potencia|potencia|refriger|radiador|combustible|dpf|escape|distribuc|correa|bujia|calentad|\bmotor\b/},
-    {cod:'03', nombre:'EMBRAGUE', re:/embrague|clutch/},
-    {cod:'04', nombre:'CAJA DE CAMBIOS', re:/caja de cambio|caja de velocidad|caja automatica/},
+    {cod:'03', nombre:'EMBRAGUE', re:/(?!)/},  // los trabajos de embrague se cuentan en 04-CAJA DE CAMBIOS
+    {cod:'04', nombre:'CAJA DE CAMBIOS', re:/caja de cambio|caja de velocidad|caja automatica|embrague|clutch/},
     {cod:'05', nombre:'TRANSMISION', re:/transmision|cardan|diferencial|\bdoble\b|semi ?eje|palier|traccion|4x4|reductora|transfer/},
     {cod:'06', nombre:'EJE DELANTERO /DIRECCION /CUBOS/RUEDAS', re:/direccion|eje delantero|cubo|rueda|neumatic|cubierta|rulem|rodamiento|\bbba\b|cremallera|rotula|alineacion|balanceo/},
     {cod:'07', nombre:'FRENO', re:/freno|pastilla|zapata|campana|pinza/},
