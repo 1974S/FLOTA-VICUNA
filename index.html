@@ -576,7 +576,7 @@ body {
         <div class="brand-icon">🔧</div>
         <div class="brand-text">
           <div class="brand-title">Flota Vicuña</div>
-          <div class="brand-sub">Proyecto Vicuña · Flota 65 unidades · v56</div>
+          <div class="brand-sub" id="brandSub">Proyecto Vicuña</div>
         </div>
       </div>
       <button class="btn-add-nav" onclick="openAdd()" aria-label="Nuevo turno">+</button>
@@ -922,6 +922,10 @@ const FLOTA_VICUNA = [
   {patente:"AI414AY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
   {patente:"AI414AZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"}
 ];
+// Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
+const APP_VERSION = 'v57';
+(function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
+
 
 function initFlotaDatalist() {
   const dl = document.getElementById('flotaList');
