@@ -576,7 +576,7 @@ body {
         <div class="brand-icon">🔧</div>
         <div class="brand-text">
           <div class="brand-title">Flota Vicuña</div>
-          <div class="brand-sub">Proyecto Vicuña · Flota 65 unidades · v55</div>
+          <div class="brand-sub">Proyecto Vicuña · Flota 65 unidades · v56</div>
         </div>
       </div>
       <button class="btn-add-nav" onclick="openAdd()" aria-label="Nuevo turno">+</button>
@@ -4223,7 +4223,7 @@ function openInformeCompleto(){
         <span style="font-size:17px;font-weight:700;">📊 Informe completo de indicadores</span>
         <button onclick="document.getElementById('infCompModal').remove()" style="background:none;border:none;font-size:22px;color:var(--text2);">✕</button>
       </div>
-      <p style="font-size:13px;color:var(--text2);margin:0 0 14px;">Incluye disponibilidad, MKBF, MKBF programado, MTTR, evolución mensual, Sede vs Mina, intervenciones por categoría y subcategoría, horas hombre, consumo del contrato y el detalle de cada orden del mes.</p>
+      <p style="font-size:13px;color:var(--text2);margin:0 0 14px;">Incluye disponibilidad, MKBF, MKBF programado, MTTR, evolución mensual, Sede vs Mina, intervenciones por categoría y subcategoría, horas hombre y el detalle de cada orden del mes. No incluye costos.</p>
       ${meses.length ? `
       <label style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;">MES DEL INFORME</label>
       <select id="infCompMes" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:15px;margin:6px 0 14px;">${opts}</select>
@@ -4344,22 +4344,6 @@ function informeCompletoBloques(mesKey){
     B.push({ t:'p', small:true, text:'Horas disponibles = horas del turno día × 14 días por roster.' });
   }
 
-  // ---- 7) Consumo del contrato ----
-  if (typeof estadoPagoData !== 'undefined' && estadoPagoData) {
-    const e = estadoPagoData, $$ = v => '$ ' + (v||0).toLocaleString('es-AR',{maximumFractionDigits:0});
-    B.push({ t:'h1', text:'Consumo del contrato' });
-    B.push({ t:'table', head:['Concepto','Valor'], align:['l','r'], body:[
-      ['Contrato', e.contrato || '—'],
-      ['Estado de pago N°', (e.numero||'—') + (e.periodoDesde && e.periodoHasta ? ' ('+fFmt(e.periodoDesde)+' al '+fFmt(e.periodoHasta)+')' : '')],
-      ['Valor total del contrato', $$(e.nuevoValorContrato)],
-      ['Consumido acumulado', $$(e.valorAcumTotal)],
-      ['% consumido', ((e.pctConsumidoTotal||0)*100).toFixed(1).replace('.',',') + '%'],
-      ['Saldo restante', $$(e.saldoRestante)],
-      ['Consumido en este período', $$(e.valorAcumPeriodo)]
-    ]});
-    B.push({ t:'p', small:true, text:'Corresponde al último estado de pago cargado.' });
-  }
-
   // ---- 8) Detalle de órdenes de trabajo (OT) ----
   const nomCat = cod => { const c = D.CATEGORIAS_INT.find(x=>x.cod===cod); return c ? cod+'-'+c.nombre : 'Sin clasificar'; };
   const ots = [];
@@ -4369,22 +4353,21 @@ function informeCompletoBloques(mesKey){
   if (!ots.length) {
     B.push({ t:'p', text:'No hay órdenes de trabajo cargadas para este mes.' });
   } else {
-    let totUsd = 0, nSede = 0, nMina = 0;
+    let nSede = 0, nMina = 0;
     const rows = ots.map(o=>{
       const lugar = D.clasificarLugarOT(o);
       if (lugar==='sede') nSede++; else if (lugar==='mina') nMina++;
-      totUsd += (o.total_usd||0);
       const textos = [...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)];
       let cat;
       if (o.tipo==='PM') cat = lugar==='sede' ? nomCat('01') : (lugar==='mina' ? nomCat('00') : 'PM');
       else { const cod = D.sistemaDeTextos(textos); cat = cod ? (nomCat(cod) + (D.subDeCategoria(cod,textos) ? ' · '+D.subDeCategoria(cod,textos) : '')) : 'Sin clasificar'; }
       const det = [...(o.repuestos||[]).map(r=>`${r.cant||1}× ${r.desc || r.codigo || 'repuesto'}`), ...(o.trabajos||[]).map(t=>'(MO) '+(t.desc||''))].join('; ');
-      return [String(o.nro||''), fFmt(o.fecha_iso), o.patente||'', o.tipo||'', lugar==='sede'?'Sede':(lugar==='mina'?'Mina':'—'), cat, cortar(det||'Sin ítems detallados',170), N(o.total_usd)];
+      return [String(o.nro||''), fFmt(o.fecha_iso), o.patente||'', o.tipo||'', lugar==='sede'?'Sede':(lugar==='mina'?'Mina':'—'), cat, cortar(det||'Sin ítems detallados',170)];
     });
-    rows.push(['','','','','','','Total ('+ots.length+' órdenes)', N(totUsd)]);
-    B.push({ t:'p', text:`${ots.length} órdenes: ${nSede} de Sede y ${nMina} de Mina. Costo total: USD ${N(totUsd)}.` });
-    B.push({ t:'table', head:['N° OT','Fecha','Patente','Tipo','Lugar','Categoría','Repuestos y trabajos','USD'], align:['l','l','l','l','l','l','l','r'],
-      widths:[11,17,17,18,11,33,55,16], small:true, body:rows, boldLast:true });
+    rows.push(['','','','','','','Total ('+ots.length+' órdenes)']);
+    B.push({ t:'p', text:`${ots.length} órdenes: ${nSede} de Sede y ${nMina} de Mina.` });
+    B.push({ t:'table', head:['N° OT','Fecha','Patente','Tipo','Lugar','Categoría','Repuestos y trabajos'], align:['l','l','l','l','l','l','l'],
+      widths:[11,17,17,18,11,33,66], small:true, body:rows, boldLast:true });
   }
 
   // ---- 9) Detalle de reparaciones de rosters (mina) ----
