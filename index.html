@@ -3669,19 +3669,14 @@ function renderDashboard(c) {
   const sinAcentos = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const esRepProgramada = t => { const u = sinAcentos(t).trim(); return u==='pm' || /chequeo mensual/.test(u); };
   function sistemaDeTextos(campos){
-    // "Lavado completo" y "cambio de pértiga" tienen prioridad: son trabajos propios,
-    // no reparaciones de otro sistema.
-    const PRIORIDAD = SISTEMAS_REP.filter(x=>x.cod==='11' || x.cod==='12');
-    for (const campo of campos) {
-      const t = sinAcentos(campo);
-      if (!t) continue;
-      for (const x of PRIORIDAD) if (x.re.test(t)) return x.cod;
-    }
-    for (const campo of campos) {
-      const t = sinAcentos(campo);
-      if (!t) continue;
-      for (const s of SISTEMAS_REP) if (s.re.test(t)) return s.cod;
-    }
+    // Se mira todo el texto de la intervención en este orden: 1) reparación de un sistema (02 al 10),
+    // 2) cambio de pértiga, 3) lavado completo. Así una orden que trae un embrague (por ejemplo)
+    // y además un lavado cuenta como embrague, y el lavado/pértiga solo cuentan si no hay otra reparación.
+    const ts = campos.map(sinAcentos).filter(Boolean);
+    const REPARACION = SISTEMAS_REP.filter(x=>x.cod!=='11' && x.cod!=='12');
+    for (const t of ts) for (const x of REPARACION) if (x.re.test(t)) return x.cod;
+    for (const t of ts) if (/pertiga/.test(t)) return '12';
+    for (const t of ts) if (/lavado\s+completo/.test(t)) return '11';
     return null;
   }
   function contarCategoriasMes(mesKey){
@@ -3754,7 +3749,7 @@ function renderDashboard(c) {
         <tbody>${filasSis}</tbody>
       </table>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Porcentaje sobre las intervenciones del mes, con la cantidad entre paréntesis; cada columna suma 100%. 00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, 11 = lavado completo y 12 = cambio de pértiga, clasificados automáticamente según lo que dice cada intervención.</div>`;
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Porcentaje sobre las intervenciones del mes, con la cantidad entre paréntesis; cada columna suma 100%. 00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, 11 = lavado completo y 12 = cambio de pértiga (estos dos cuentan solo cuando la intervención no incluye la reparación de otro sistema), clasificados automáticamente según lo que dice cada intervención.</div>`;
 
     const escH = t => String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const listaOtros = colsSis.flatMap(x=>x.r.detOtros).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
