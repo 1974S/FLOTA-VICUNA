@@ -3676,8 +3676,8 @@ function renderDashboard(c) {
     {cod:'09', nombre:'SISTEMA ELECTRICO', re:/electric|bateria|alternador|arranque|fusible|\bluz\b|luces|lampara|sensor|tablero|alarma|escaner|cableado|\bcable|faro/,
       subs:[ {nombre:'Batería', re:/bateria/}, {nombre:'Luces y lámparas', re:/\bluz\b|luces|lampara|\blamp\b|faro/}, {nombre:'Fusibles y cableado', re:/fusible|cableado|\bcable/},
              {nombre:'Alarma / tablero / escáner', re:/alarma|tablero|escaner|sensor/}, {nombre:'Arranque y alternador', re:/arranque|alternador/}, {nombre:'Eléctrico (general)', re:/electric/} ]},
-    {cod:'10', nombre:'CABINA', re:/cabina|asiento|funda|tapizad|parabrisas|lavaparab|escobilla|vidrio|espejo|retrovisor|puerta|cerradura|climatiz|calefaccion/,
-      subs:[ {nombre:'Escobillas y lavaparabrisas', re:/escobilla|parabrisas|lavaparab/}, {nombre:'Vidrios y espejos', re:/vidrio|espejo|retrovisor/}, {nombre:'Asientos y fundas', re:/asiento|funda|tapizad/},
+    {cod:'10', nombre:'CABINA', re:/cabina|asiento|funda|tapizad|parabrisas|lavaparab|escobilla|vidrio|espejo|retrovisor|puerta|cerradura|climatiz|calefaccion|anti[\s-]?e[xs]plosiv/,
+      subs:[ {nombre:'Film antiexplosivo', re:/anti[\s-]?e[xs]plosiv/}, {nombre:'Escobillas y lavaparabrisas', re:/escobilla|parabrisas|lavaparab/}, {nombre:'Vidrios y espejos', re:/vidrio|espejo|retrovisor/}, {nombre:'Asientos y fundas', re:/asiento|funda|tapizad/},
              {nombre:'Puertas y cerraduras', re:/puerta|cerradura/}, {nombre:'Climatización', re:/climatiz|calefaccion/}, {nombre:'Cabina (general)', re:/cabina/} ]},
     {cod:'11', nombre:'LAVADO COMPLETO', re:/lavado\s+completo/},
     {cod:'12', nombre:'CAMBIO DE PERTIGA', re:/pertiga/}
@@ -3811,8 +3811,14 @@ function renderDashboard(c) {
     }
   }
 
+  // Foto del Dashboard para el informe completo (ver informeCompletoBloques): guarda los mismos
+  // cálculos que se ven en pantalla para que el informe dé exactamente los mismos números.
+  window.__dash = { calcIndicadoresMes, contarLugarMes, contarCategoriasMes, clasificarLugarOT, sistemaDeTextos, subDeCategoria,
+                    CATEGORIAS_INT, mesesEvol, mesActualKey, mttrFijo: HORAS_DETENCION.CORR };
+
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
   html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
+  html += `<button onclick="openInformeCompleto()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--red);font-weight:700;font-size:14px;margin-bottom:14px;">📊 Informe completo de indicadores (PDF / Word)</button>`;
 
   // Fila: Estado de turnos + Tipos de PM
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">`;
@@ -4180,6 +4186,375 @@ function generarInformeWord(){
       if(st) st.textContent='✅ Word generado.';
     }).catch(e=>{ console.error(e); if(st) st.textContent='Error Word: '+e.message; });
   } catch(e){ console.error(e); if(st) st.textContent='Error al generar Word: '+e.message; }
+}
+
+
+
+/* =====================================================================
+   INFORME COMPLETO DE INDICADORES (PDF + Word) — con selector de mes
+   Usa la "foto" del Dashboard (window.__dash) para calcular exactamente
+   lo mismo que se ve en pantalla, y suma el detalle orden por orden.
+   ===================================================================== */
+function openInformeCompleto(){
+  const D = window.__dash;
+  const meses = D ? D.mesesEvol.filter(m=>!m.esFuturo && m.ind) : [];
+  const opts = meses.map(m=>`<option value="${m.key}" ${m.esActual?'selected':''}>${m.nombre} de ${m.key.slice(0,4)}${m.esActual?' (mes en curso)':''}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'infCompModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg);width:100%;max-width:640px;border-radius:18px 18px 0 0;padding:20px 16px 30px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <span style="font-size:17px;font-weight:700;">📊 Informe completo de indicadores</span>
+        <button onclick="document.getElementById('infCompModal').remove()" style="background:none;border:none;font-size:22px;color:var(--text2);">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--text2);margin:0 0 14px;">Incluye disponibilidad, MKBF, MKBF programado, MTTR, evolución mensual, Sede vs Mina, intervenciones por categoría y subcategoría, horas hombre, consumo del contrato y el detalle de cada orden del mes.</p>
+      ${meses.length ? `
+      <label style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;">MES DEL INFORME</label>
+      <select id="infCompMes" style="width:100%;padding:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:15px;margin:6px 0 14px;">${opts}</select>
+      <button onclick="generarInformeCompletoPDF()" style="width:100%;padding:14px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:15px;margin-bottom:10px;">📕 Descargar PDF</button>
+      <button onclick="generarInformeCompletoWord()" style="width:100%;padding:14px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--border);font-weight:700;font-size:15px;">📘 Descargar Word</button>`
+      : `<div style="font-size:13px;color:var(--text2);padding:10px 0;">Abrí primero la pestaña Dashboard para que se carguen los indicadores y volvé a tocar este botón.</div>`}
+      <div id="infCompStatus" style="font-size:12px;color:var(--text3);text-align:center;margin-top:12px;"></div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function informeCompletoBloques(mesKey){
+  const D = window.__dash;
+  if (!D) return null;
+  const idx = D.mesesEvol.findIndex(m=>m.key===mesKey);
+  if (idx < 0 || !D.mesesEvol[idx].ind) return null;
+  const M = D.mesesEvol[idx];
+  const P = idx > 0 ? D.mesesEvol[idx-1] : null;
+  const ind = M.ind, indP = P ? P.ind : null;
+  const anio = mesKey.slice(0,4);
+  const tituloMes = M.nombre + ' de ' + anio;
+  const tituloPrev = P ? P.nombre + ' de ' + anio : null;
+
+  const N = (v, suf, dec) => (v===null||v===undefined||isNaN(v)) ? '—' : v.toLocaleString('es-AR',{maximumFractionDigits:dec||0}) + (suf||'');
+  const pct = (n,t) => t>0 ? (Math.round(n/t*1000)/10).toLocaleString('es-AR',{maximumFractionDigits:1}) + '%' : '—';
+  const fFmt = iso => iso ? String(iso).split('-').reverse().join('/') : '—';
+  const cortar = (t,n) => { t = String(t||'').replace(/\s+/g,' ').trim(); return t.length>n ? t.slice(0,n-1)+'…' : t; };
+  const mttrDe = i => i ? (i.mttrReal!==null ? i.mttrReal : D.mttrFijo) : null;
+  const mttrTxt = i => i ? (N(mttrDe(i),' hs',2) + (i.mttrReal!==null ? ' (real)' : ' (estimado)')) : '—';
+  const dispTxt = i => i ? i.dispPct.toFixed(2).replace('.',',') + '%' : '—';
+
+  const B = [];
+
+  // ---- 1) Resumen ----
+  B.push({ t:'h1', text:'Resumen de indicadores — ' + tituloMes });
+  if (M.esActual) B.push({ t:'p', text:'Mes en curso: los valores están calculados hasta el día de hoy.' });
+  B.push({ t:'cards', items:[
+    { label:'Disponibilidad de la flota', value: dispTxt(ind) },
+    { label:'MKBF (km entre fallas)', value: N(ind.mkbf,' km') },
+    { label:'MKBF programado (km entre PM)', value: N(ind.mkbfProg,' km') },
+    { label:'MTTR', value: mttrTxt(ind) }
+  ]});
+
+  // ---- 2) Detalle de indicadores vs mes anterior ----
+  B.push({ t:'h1', text:'Indicadores de flota' });
+  B.push({ t:'table',
+    head:['Indicador', tituloMes, tituloPrev || 'Mes anterior', 'Cómo se calcula / detalle'],
+    align:['l','r','r','l'], widths:[34,26,26,92],
+    body:[
+      ['Disponibilidad de la flota', dispTxt(ind), dispTxt(indP),
+        `${ind.hTotal} hs de detención sobre ${N(ind.hDisp)} hs disponibles (${ind.hProg} hs / ${ind.eProg} programadas y ${ind.hImprev} hs / ${ind.eImprev} imprevistas).`],
+      ['MKBF (km entre fallas correctivas)', N(ind.mkbf,' km'), indP ? N(indP.mkbf,' km') : '—',
+        `${N(ind.kmRec)} km recorridos por las unidades con lectura de km (${ind.unidadesKm}) ÷ ${ind.eImprev} correctivos.`],
+      ['MKBF programado (km entre PM realizados)', N(ind.mkbfProg,' km'), indP ? N(indP.mkbfProg,' km') : '—',
+        `${N(ind.kmRec)} km ÷ ${ind.nPM} PM realizados en esas mismas unidades (OT y rosters, sin inspecciones mensuales).`],
+      ['MTTR (tiempo medio de reparación)', mttrTxt(ind), mttrTxt(indP),
+        ind.mttrReal!==null ? `Promedio real de ${ind.cantReales} reparación${ind.cantReales!==1?'es':''} cargadas en rosters (sin PM).` : `Sin reparaciones reales cargadas este mes: se usa la hora fija estimada (${D.mttrFijo} hs).`]
+    ]});
+
+  // ---- 3) Evolución mensual ----
+  B.push({ t:'h1', text:'Evolución mensual ' + anio });
+  B.push({ t:'table', head:['Mes','Disponibilidad','MKBF prog.','MKBF corr.','MTTR'], align:['l','r','r','r','r'],
+    body: D.mesesEvol.filter(m=>!m.esFuturo && m.ind).map(m=>[
+      m.nombre + (m.key===mesKey ? ' •' : '') + (m.esActual ? ' *' : ''),
+      dispTxt(m.ind), N(m.ind.mkbfProg,' km'), N(m.ind.mkbf,' km'), mttrTxt(m.ind)
+    ])});
+  B.push({ t:'p', small:true, text:'* Mes en curso, calculado hasta hoy. • Mes de este informe.' });
+
+  // ---- 4) Sede vs Mina ----
+  const L = D.contarLugarMes(mesKey), LP = P ? D.contarLugarMes(P.key) : null;
+  B.push({ t:'h1', text:'Intervenciones: Sede vs Mina' });
+  B.push({ t:'table', head:['Lugar', tituloMes+' — órdenes', '%', (tituloPrev||'Mes anterior')+' — órdenes', '%'], align:['l','r','r','r','r'],
+    body:[
+      ['Sede (taller San Juan)', String(L.sede), pct(L.sede,L.total), LP ? String(LP.sede) : '—', LP ? pct(LP.sede,LP.total) : '—'],
+      ['Mina', String(L.mina), pct(L.mina,L.total), LP ? String(LP.mina) : '—', LP ? pct(LP.mina,LP.total) : '—'],
+      ['Total', String(L.total), L.total>0?'100%':'—', LP ? String(LP.total) : '—', LP && LP.total>0 ? '100%' : '—']
+    ], boldLast:true });
+  B.push({ t:'p', small:true, text:'Se clasifica por el nombre: Sede = OT de Diego Ares; Mina = OT de Manzini o Quiroga (asesor de servicio y, si no figura, técnico o supervisor; como último recurso, el sector).' + (L.sin>0 ? ` ${L.sin} orden${L.sin!==1?'es':''} del mes no se pudieron clasificar.` : '') });
+
+  // ---- 5) Intervenciones por categoría y subcategoría ----
+  const C = D.contarCategoriasMes(mesKey), CP = P ? D.contarCategoriasMes(P.key) : null;
+  B.push({ t:'h1', text:'Intervenciones por categoría' });
+  const catRows = [];
+  D.CATEGORIAS_INT.forEach(cat=>{
+    const n = C.cnt[cat.cod] || 0, nP = CP ? (CP.cnt[cat.cod]||0) : 0;
+    if (!n && !nP) return;
+    catRows.push([cat.cod+'-'+cat.nombre, String(n), pct(n,C.total), CP ? pct(nP,CP.total) : '—']);
+    const nombres = (cat.subs||[]).map(s=>s.nombre).concat(['Otros']);
+    nombres.forEach(nom=>{
+      const ns = ((C.sub[cat.cod]||{})[nom]) || 0, nsP = CP ? (((CP.sub[cat.cod]||{})[nom]) || 0) : 0;
+      if (!ns && !nsP) return;
+      catRows.push(['    ' + nom, String(ns), pct(ns,C.total), CP ? pct(nsP,CP.total) : '—']);
+    });
+  });
+  catRows.push(['Sin clasificar', String(C.cnt.otros||0), pct(C.cnt.otros||0,C.total), CP ? pct(CP.cnt.otros||0,CP.total) : '—']);
+  catRows.push(['Total intervenciones', String(C.total), C.total>0?'100%':'—', CP && CP.total>0 ? '100%' : '—']);
+  B.push({ t:'table', head:['Categoría','Cantidad','% de '+M.nombre, '% de '+(P?P.nombre:'mes anterior')], align:['l','r','r','r'], widths:[92,26,30,30], body:catRows, boldLast:true });
+  B.push({ t:'p', small:true, text:'00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, 11 = lavado completo y 12 = cambio de pértiga (estos dos cuentan solo cuando la intervención no incluye la reparación de otro sistema). La mina se cuenta con los rosters y San Juan con las OT de Sede.' });
+
+  // ---- 6) Horas hombre por roster ----
+  const consum = {};
+  Object.values(reparacionesReales||{}).forEach(r=>{
+    if (typeof r.horasHombre==='number' && r.rosterFecha && r.rosterFecha.startsWith(mesKey)) consum[r.rosterFecha] = (consum[r.rosterFecha]||0) + r.horasHombre;
+  });
+  const metas = Object.values(rostersMeta||{}).filter(m=>m.fecha && m.fecha.startsWith(mesKey));
+  const fechasR = Array.from(new Set([...metas.map(m=>m.fecha), ...Object.keys(consum)])).sort();
+  B.push({ t:'h1', text:'Horas hombre por roster' });
+  if (!fechasR.length) {
+    B.push({ t:'p', text:'No hay rosters cargados para este mes.' });
+  } else {
+    B.push({ t:'table', head:['Roster (fecha)','Supervisor','Hs. consumidas','Hs. disponibles','Utilización'], align:['l','l','r','r','r'],
+      body: fechasR.map(f=>{
+        const meta = metas.find(m=>m.fecha===f) || null;
+        const disp = meta && meta.horasDisponibles ? meta.horasDisponibles : null;
+        const cons = consum[f] || 0;
+        return [fFmt(f), meta ? (meta.supervisor||'—') : '—', N(cons,' hs'), disp!==null ? N(disp,' hs') : '—', disp ? pct(cons,disp) : '—'];
+      })});
+    B.push({ t:'p', small:true, text:'Horas disponibles = horas del turno día × 14 días por roster.' });
+  }
+
+  // ---- 7) Consumo del contrato ----
+  if (typeof estadoPagoData !== 'undefined' && estadoPagoData) {
+    const e = estadoPagoData, $$ = v => '$ ' + (v||0).toLocaleString('es-AR',{maximumFractionDigits:0});
+    B.push({ t:'h1', text:'Consumo del contrato' });
+    B.push({ t:'table', head:['Concepto','Valor'], align:['l','r'], body:[
+      ['Contrato', e.contrato || '—'],
+      ['Estado de pago N°', (e.numero||'—') + (e.periodoDesde && e.periodoHasta ? ' ('+fFmt(e.periodoDesde)+' al '+fFmt(e.periodoHasta)+')' : '')],
+      ['Valor total del contrato', $$(e.nuevoValorContrato)],
+      ['Consumido acumulado', $$(e.valorAcumTotal)],
+      ['% consumido', ((e.pctConsumidoTotal||0)*100).toFixed(1).replace('.',',') + '%'],
+      ['Saldo restante', $$(e.saldoRestante)],
+      ['Consumido en este período', $$(e.valorAcumPeriodo)]
+    ]});
+    B.push({ t:'p', small:true, text:'Corresponde al último estado de pago cargado.' });
+  }
+
+  // ---- 8) Detalle de órdenes de trabajo (OT) ----
+  const nomCat = cod => { const c = D.CATEGORIAS_INT.find(x=>x.cod===cod); return c ? cod+'-'+c.nombre : 'Sin clasificar'; };
+  const ots = [];
+  Object.values(otData||{}).forEach(arr=>(arr||[]).forEach(o=>{ if (o.fecha_iso && o.fecha_iso.startsWith(mesKey) && o.tipo!=='Venta') ots.push(o); }));
+  ots.sort((a,b)=> (a.fecha_iso||'').localeCompare(b.fecha_iso||'') || ((parseInt(a.nro)||0)-(parseInt(b.nro)||0)));
+  B.push({ t:'h1', text:'Detalle de órdenes de trabajo — ' + tituloMes });
+  if (!ots.length) {
+    B.push({ t:'p', text:'No hay órdenes de trabajo cargadas para este mes.' });
+  } else {
+    let totUsd = 0, nSede = 0, nMina = 0;
+    const rows = ots.map(o=>{
+      const lugar = D.clasificarLugarOT(o);
+      if (lugar==='sede') nSede++; else if (lugar==='mina') nMina++;
+      totUsd += (o.total_usd||0);
+      const textos = [...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)];
+      let cat;
+      if (o.tipo==='PM') cat = lugar==='sede' ? nomCat('01') : (lugar==='mina' ? nomCat('00') : 'PM');
+      else { const cod = D.sistemaDeTextos(textos); cat = cod ? (nomCat(cod) + (D.subDeCategoria(cod,textos) ? ' · '+D.subDeCategoria(cod,textos) : '')) : 'Sin clasificar'; }
+      const det = [...(o.repuestos||[]).map(r=>`${r.cant||1}× ${r.desc || r.codigo || 'repuesto'}`), ...(o.trabajos||[]).map(t=>'(MO) '+(t.desc||''))].join('; ');
+      return [String(o.nro||''), fFmt(o.fecha_iso), o.patente||'', o.tipo||'', lugar==='sede'?'Sede':(lugar==='mina'?'Mina':'—'), cat, cortar(det||'Sin ítems detallados',170), N(o.total_usd)];
+    });
+    rows.push(['','','','','','','Total ('+ots.length+' órdenes)', N(totUsd)]);
+    B.push({ t:'p', text:`${ots.length} órdenes: ${nSede} de Sede y ${nMina} de Mina. Costo total: USD ${N(totUsd)}.` });
+    B.push({ t:'table', head:['N° OT','Fecha','Patente','Tipo','Lugar','Categoría','Repuestos y trabajos','USD'], align:['l','l','l','l','l','l','l','r'],
+      widths:[11,17,17,18,11,33,55,16], small:true, body:rows, boldLast:true });
+  }
+
+  // ---- 9) Detalle de reparaciones de rosters (mina) ----
+  const reps = Object.values(reparacionesReales||{}).filter(r=>r.fecha && r.fecha.startsWith(mesKey))
+    .sort((a,b)=> a.fecha.localeCompare(b.fecha) || ((parseInt(a.nOtFreddy)||0)-(parseInt(b.nOtFreddy)||0)));
+  B.push({ t:'h1', text:'Detalle de reparaciones de mina (rosters) — ' + tituloMes });
+  if (!reps.length) {
+    B.push({ t:'p', text:'No hay reparaciones de roster cargadas para este mes.' });
+  } else {
+    let sHs = 0, sHH = 0;
+    const esProg = t => { const u = String(t||'').toLowerCase().trim(); return u==='pm' || /chequeo mensual/.test(u); };
+    const rows = reps.map(r=>{
+      sHs += (r.tiempoReparacionHoras||0); sHH += (r.horasHombre||0);
+      const textos = [r.tipo, r.causa];
+      let cat;
+      if (esProg(r.tipo)) cat = nomCat('00') + (D.subDeCategoria('00',[r.tipo]) ? ' · '+D.subDeCategoria('00',[r.tipo]) : '');
+      else { const cod = D.sistemaDeTextos(textos); cat = cod ? (nomCat(cod) + (D.subDeCategoria(cod,textos) ? ' · '+D.subDeCategoria(cod,textos) : '')) : 'Sin clasificar'; }
+      const det = [r.causa, r.reparacionRealizada].filter(Boolean).join(' — ');
+      return [fFmt(r.fecha), r.patente||'', r.tipo||'', cortar(det,170), N(r.tiempoReparacionHoras,'',1), N(r.horasHombre,'',1), cat];
+    });
+    rows.push(['','','','Total ('+reps.length+' reparaciones)', N(sHs,'',1), N(sHH,'',1), '']);
+    B.push({ t:'table', head:['Fecha','Patente','Tipo','Causa y reparación realizada','Hs rep.','Hs hombre','Categoría'], align:['l','l','l','l','r','r','l'],
+      widths:[17,17,25,62,11,13,33], small:true, body:rows, boldLast:true });
+  }
+
+  return { mes: tituloMes, mesKey, fecha: new Date().toLocaleDateString('es-AR'), bloques: B };
+}
+
+/* ---------- PDF ---------- */
+function generarInformeCompletoPDF(){
+  const st = document.getElementById('infCompStatus');
+  const mesKey = (document.getElementById('infCompMes')||{}).value;
+  try {
+    const R = informeCompletoBloques(mesKey);
+    if (!R) { if (st) st.textContent = 'Abrí primero el Dashboard y elegí un mes con datos.'; return; }
+    if (st) st.textContent = 'Generando PDF…';
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'mm', format:'a4'});
+    const W = 210, M = 16;
+    let y = 0;
+    const asegurar = h => { if (y + h > 275) { doc.addPage(); y = M + 4; } };
+
+    // Portada
+    try { doc.addImage(FREDDY_LOGO, 'PNG', M, 20, 80, 33); } catch(e){}
+    y = 66;
+    doc.setDrawColor(204,0,0); doc.setLineWidth(1); doc.line(M, y, W-M, y); y += 14;
+    doc.setFont('helvetica','bold'); doc.setFontSize(22); doc.setTextColor(30,30,30);
+    doc.text('Informe completo de indicadores', M, y); y += 10;
+    doc.setFontSize(15); doc.setTextColor(204,0,0);
+    doc.text('Proyecto Vicuña — ' + R.mes, M, y); y += 14;
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(90,90,90);
+    doc.text('Freddy El Taller S.R.L. — Mantenimiento de livianos', M, y); y += 6;
+    doc.text('Servicio prestado a: Vicuña Argentina S.A.', M, y); y += 6;
+    doc.text('Fecha de emisión: ' + R.fecha, M, y); y += 16;
+
+    R.bloques.forEach(b=>{
+      if (b.t === 'h1') {
+        asegurar(28);
+        doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(30,30,30);
+        doc.text(b.text, M, y); y += 3;
+        doc.setDrawColor(204,0,0); doc.setLineWidth(0.5); doc.line(M, y, M+22, y); y += 6;
+      } else if (b.t === 'p') {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(b.small ? 8 : 10); doc.setTextColor(b.small ? 110 : 60, b.small ? 110 : 60, b.small ? 110 : 60);
+        const lines = doc.splitTextToSize(b.text, W - 2*M);
+        asegurar(lines.length * (b.small ? 3.6 : 4.6) + 2);
+        doc.text(lines, M, y); y += lines.length * (b.small ? 3.6 : 4.6) + 5;
+      } else if (b.t === 'cards') {
+        const cw = (W - 2*M - 6) / 2, ch = 22;
+        asegurar(Math.ceil(b.items.length/2) * (ch+6) + 4);
+        b.items.forEach((c,i)=>{
+          const cx = M + (i%2)*(cw+6), cy = y + Math.floor(i/2)*(ch+6);
+          doc.setFillColor(247,247,249); doc.setDrawColor(225,225,228);
+          doc.roundedRect(cx, cy, cw, ch, 2, 2, 'FD');
+          doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(204,0,0);
+          doc.text(String(c.value), cx + cw/2, cy + 10, {align:'center'});
+          doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100,100,100);
+          doc.text(c.label, cx + cw/2, cy + 17, {align:'center'});
+        });
+        y += Math.ceil(b.items.length/2) * (ch+6) + 6;
+      } else if (b.t === 'table') {
+        asegurar(24);
+        const total = (b.widths||[]).reduce((a,c)=>a+c,0) || 1;
+        const cs = {};
+        b.align.forEach((a,i)=>{
+          cs[i] = {};
+          if (a === 'r') cs[i].halign = 'right';
+          if (b.widths) cs[i].cellWidth = (W - 2*M) * b.widths[i] / total;
+        });
+        doc.autoTable({
+          startY: y, margin:{left:M, right:M},
+          head:[b.head], body:b.body, theme:'striped',
+          headStyles:{fillColor:[204,0,0], fontSize: b.small ? 7.5 : 8.5},
+          bodyStyles:{fontSize: b.small ? 7 : 8.5, cellPadding: b.small ? 1.4 : 2},
+          columnStyles: cs,
+          didParseCell: (d)=>{
+            if (d.section === 'head' && b.align[d.column.index] === 'r') d.cell.styles.halign = 'right';
+            if (d.section !== 'body') return;
+            const first = String(d.row.raw && d.row.raw[0] != null ? d.row.raw[0] : '');
+            if (first.indexOf('    ') === 0) { d.cell.styles.textColor = [110,110,110]; d.cell.styles.fontSize = (b.small ? 6.5 : 7.5); }
+            if (b.boldLast && d.row.index === b.body.length - 1) d.cell.styles.fontStyle = 'bold';
+          }
+        });
+        y = doc.lastAutoTable.finalY + 8;
+      }
+    });
+
+    const pages = doc.internal.getNumberOfPages();
+    for (let i=1; i<=pages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(150,150,150);
+      doc.text('Freddy El Taller S.R.L. — Informe completo de indicadores · Proyecto Vicuña · ' + R.mes, M, 290);
+      doc.text('Página ' + i + ' de ' + pages, W-M, 290, {align:'right'});
+    }
+    doc.save('Informe_Completo_Indicadores_Vicuna_' + R.mesKey + '.pdf');
+    if (st) st.textContent = '✅ PDF generado.';
+  } catch(e){ console.error(e); if (st) st.textContent = 'Error al generar PDF: ' + e.message; }
+}
+
+/* ---------- Word ---------- */
+function generarInformeCompletoWord(){
+  const st = document.getElementById('infCompStatus');
+  const mesKey = (document.getElementById('infCompMes')||{}).value;
+  try {
+    const R = informeCompletoBloques(mesKey);
+    if (!R) { if (st) st.textContent = 'Abrí primero el Dashboard y elegí un mes con datos.'; return; }
+    if (st) st.textContent = 'Generando Word…';
+    const dx = window.docx;
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, ImageRun, ShadingType, TableLayoutType } = dx;
+    const ANCHO = 10306; // ancho útil de la hoja A4 con los márgenes elegidos (en twips)
+    const RED = 'CC0000';
+
+    const P = (text, o={}) => new Paragraph({ children:[new TextRun({text, bold:o.bold, size:o.size||22, color:o.color})], spacing:{after:o.after!==undefined?o.after:100} });
+    const H = text => new Paragraph({ children:[new TextRun({text, bold:true, size:28, color:RED})], spacing:{before:280, after:120}, keepNext:true });
+    const celda = (text, o={}) => new TableCell({
+      width:{ size:o.wd, type:WidthType.DXA },
+      shading: o.head ? { fill:RED, type:ShadingType.CLEAR, color:'auto' } : (o.sub ? { fill:'F2F2F2', type:ShadingType.CLEAR, color:'auto' } : undefined),
+      children:[ new Paragraph({ alignment:o.align, children:[ new TextRun({ text:String(text), bold:o.head||o.bold, color:o.head?'FFFFFF':(o.sub?'666666':undefined), size:o.size||18 }) ] }) ]
+    });
+
+    const children = [];
+    try {
+      const b64 = FREDDY_LOGO.split(',')[1];
+      const bytes = Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+      children.push(new Paragraph({ children:[ new ImageRun({ data:bytes, transformation:{width:220, height:91} }) ], spacing:{after:200} }));
+    } catch(e){}
+    children.push(new Paragraph({ children:[new TextRun({text:'Informe completo de indicadores', bold:true, size:40, color:'1E1E1E'})], spacing:{after:80} }));
+    children.push(new Paragraph({ children:[new TextRun({text:'Proyecto Vicuña — ' + R.mes, bold:true, size:28, color:RED})], spacing:{after:200} }));
+    children.push(P('Freddy El Taller S.R.L. — Mantenimiento de livianos', {color:'5A5A5A'}));
+    children.push(P('Servicio prestado a: Vicuña Argentina S.A.', {color:'5A5A5A'}));
+    children.push(P('Fecha de emisión: ' + R.fecha, {color:'5A5A5A', after:240}));
+
+    R.bloques.forEach(b=>{
+      if (b.t === 'h1') children.push(H(b.text));
+      else if (b.t === 'p') children.push(P(b.text, { size:b.small?16:20, color:b.small?'6E6E6E':'3C3C3C', after:120 }));
+      else if (b.t === 'cards') {
+        const w1 = Math.round(ANCHO*0.6), w2 = ANCHO - w1;
+        children.push(new Table({ width:{size:ANCHO,type:WidthType.DXA}, columnWidths:[w1,w2], layout:TableLayoutType.FIXED, rows:[
+          new TableRow({ tableHeader:true, children:[ celda('Indicador',{head:true,wd:w1}), celda('Valor',{head:true,wd:w2,align:AlignmentType.RIGHT}) ] }),
+          ...b.items.map(c=> new TableRow({ children:[ celda(c.label,{wd:w1}), celda(c.value,{wd:w2,align:AlignmentType.RIGHT,bold:true}) ] }))
+        ]}));
+      } else if (b.t === 'table') {
+        const total = (b.widths||[]).reduce((a,c)=>a+c,0);
+        const cols = b.head.map((h,i)=> total ? Math.round(b.widths[i]/total*ANCHO) : Math.round(ANCHO/b.head.length));
+        const wOf = i => cols[i];
+        const size = b.small ? 14 : 17;
+        children.push(new Table({ width:{size:ANCHO,type:WidthType.DXA}, columnWidths:cols, layout:TableLayoutType.FIXED, rows:[
+          new TableRow({ tableHeader:true, children: b.head.map((h,i)=> celda(h,{head:true,wd:wOf(i),size, align:b.align[i]==='r'?AlignmentType.RIGHT:undefined})) }),
+          ...b.body.map((r,ri)=>{
+            const esSub = String(r[0]).indexOf('    ') === 0;
+            const negrita = b.boldLast && ri === b.body.length - 1;
+            return new TableRow({ children: r.map((v,i)=> celda(esSub && i===0 ? '      '+String(v).trim() : v, {wd:wOf(i), size, sub:esSub, bold:negrita, align:b.align[i]==='r'?AlignmentType.RIGHT:undefined})) });
+          })
+        ]}));
+        children.push(new Paragraph({ children:[], spacing:{after:80} }));
+      }
+    });
+
+    const doc = new Document({ sections:[{ properties:{ page:{ margin:{ top:900, bottom:900, left:800, right:800 } } }, children }] });
+    Packer.toBlob(doc).then(blob=>{
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'Informe_Completo_Indicadores_Vicuna_' + R.mesKey + '.docx';
+      a.click(); URL.revokeObjectURL(url);
+      if (st) st.textContent = '✅ Word generado.';
+    }).catch(e=>{ console.error(e); if (st) st.textContent = 'Error Word: ' + e.message; });
+  } catch(e){ console.error(e); if (st) st.textContent = 'Error al generar Word: ' + e.message; }
 }
 
 
