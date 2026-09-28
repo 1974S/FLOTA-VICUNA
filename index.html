@@ -2094,10 +2094,12 @@ function otParseText(txt, archivo){
     const bloque = lines.slice(ini,fin);
     for(let j=0;j<bloque.length;j++){
       const l=bloque[j];
-      let mm=/^([A-Z0-9]{5,})\s+(.+?)\s+(\d+)\s+\$\s*([\d.,]+)\s+USD\s*([\d.,]+)$/.exec(l);
-      if(mm){ rep.push({codigo:mm[1],desc:mm[2].trim(),cant:parseInt(mm[3]),pesos:otNum(mm[4]),usd:otNum(mm[5])}); continue; }
-      let m2=/^([A-Z0-9]{5,})\s+(\d+)\s+\$\s*([\d.,]+)\s+USD\s*([\d.,]+)$/.exec(l);
-      if(m2){ const desc=j>0?bloque[j-1]:''; rep.push({codigo:m2[1],desc:desc.trim(),cant:parseInt(m2[2]),pesos:otNum(m2[3]),usd:otNum(m2[4])}); }
+      // Acepta importes con "$"/"USD" (formato habitual) o solo números (algunas hojas
+      // salen así) y la cantidad como "1" o "1,00".
+      let mm=/^([A-Z0-9]{5,})\s+(.+?)\s+(\d+(?:,\d+)?)\s+(?:\$\s*)?([\d.,]+)\s+(?:USD\s*)?([\d.,]+)$/.exec(l);
+      if(mm){ rep.push({codigo:mm[1],desc:mm[2].trim(),cant:parseFloat(mm[3].replace(',','.')),pesos:otNum(mm[4]),usd:otNum(mm[5])}); continue; }
+      let m2=/^([A-Z0-9]{5,})\s+(\d+(?:,\d+)?)\s+(?:\$\s*)?([\d.,]+)\s+(?:USD\s*)?([\d.,]+)$/.exec(l);
+      if(m2){ const desc=j>0?bloque[j-1]:''; rep.push({codigo:m2[1],desc:desc.trim(),cant:parseFloat(m2[2].replace(',','.')),pesos:otNum(m2[3]),usd:otNum(m2[4])}); }
     }
   }
   d.repuestos=rep;
@@ -2121,7 +2123,7 @@ function otParseText(txt, archivo){
     if(l.indexOf('KM:')===0){ m=/KM:\s*(\d+)/.exec(l); if(m) d.km_comentario=parseInt(m[1]); }
     if(l.indexOf('TEC:')===0) d.tecnico=l.replace('TEC:','').trim();
     if(l.indexOf('SUP:')===0) d.supervisor=l.replace('SUP:','').trim();
-    if(l.indexOf('PRECIO TOTAL')===0){ m=/\$\s*([\d.,]+)\s+USD\s*([\d.,]+)/.exec(l); if(m){ d.total_pesos=otNum(m[1]); d.total_usd=otNum(m[2]); } }
+    if(l.indexOf('PRECIO TOTAL')===0){ m=/PRECIO TOTAL\s+(?:\$\s*)?([\d.,]+)\s+(?:USD\s*)?([\d.,]+)/.exec(l); if(m){ d.total_pesos=otNum(m[1]); d.total_usd=otNum(m[2]); } }
   });
 
   d.km_efectivo = d.km || d.km_comentario || null;
