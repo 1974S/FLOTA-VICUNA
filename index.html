@@ -2325,14 +2325,36 @@ function importarRosterReparaciones(file){
 
       // Fecha del roster (fila "Fecha" cerca del encabezado) — se usa como
       // respaldo si una fila no trae su propia fecha (DIA).
+      // Acepta "Fecha", "Fecha:", "FECHA" en cualquier columna, y la fecha como
+      // fecha de Excel, número de Excel o texto (23/09/2026, 23-09-26, 2026-09-23).
+      const fechaDeCelda = (v) => {
+        if (v instanceof Date) return fechaValidaISO(v, null);
+        if (typeof v === 'number' && v > 40000 && v < 60000) {
+          return fechaValidaISO(new Date(Math.round((v - 25569) * 86400 * 1000) + 12*3600*1000), null);
+        }
+        if (typeof v === 'string') {
+          let m = /\b(\d{4})-(\d{2})-(\d{2})\b/.exec(v);
+          if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+          m = /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/.exec(v);
+          if (m) {
+            const y = m[3].length===2 ? '20'+m[3] : m[3];
+            return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+          }
+        }
+        return null;
+      };
       let rosterFechaISO = null;
-      for (const r of rows) {
-        if (typeof r[0]==='string' && r[0].trim().toLowerCase()==='fecha' && r[1] instanceof Date) {
-          rosterFechaISO = fechaValidaISO(r[1], null);
-          break;
+      for (let i=0; i<Math.min(rows.length, 40) && !rosterFechaISO; i++) {
+        const r = rows[i] || [];
+        for (let c=0; c<r.length && !rosterFechaISO; c++) {
+          if (typeof r[c]==='string' && /^fecha\b/i.test(r[c].trim()) && !/detenci|salida|hora/i.test(r[c])) {
+            // la fecha puede venir en la misma celda ("Fecha: 23/09/2026") o en las siguientes
+            rosterFechaISO = fechaDeCelda(r[c].replace(/^fecha\s*:?/i,'')) ;
+            for (let k=c+1; k<=c+3 && k<r.length && !rosterFechaISO; k++) rosterFechaISO = fechaDeCelda(r[k]);
+          }
         }
       }
-      if (!rosterFechaISO) { alert('No encontré la fecha del roster (fila "Fecha") en la planilla.'); return; }
+      // Si no hay fecha de roster todavía, más abajo se usa la fecha más reciente de las tareas (columna DIA).
 
       // Metadatos del roster: técnicos de turno día y horas por día, para
       // calcular horas hombre disponibles (técnicos × horas × 14 días fijos).
@@ -2376,6 +2398,19 @@ function importarRosterReparaciones(file){
       };
       if (idx.interno===-1 || idx.tiempo===-1) { alert('La planilla no tiene las columnas esperadas (N° DE INTERNO / TIEMPO DE REPARACION).'); return; }
 
+      if (!rosterFechaISO && idx.dia>-1) {
+        // respaldo: la fecha más reciente entre los días de las tareas
+        for (let i=headerIdx+1; i<rows.length; i++) {
+          const f = fechaDeCelda(rows[i][idx.dia]);
+          if (f && (!rosterFechaISO || f > rosterFechaISO)) rosterFechaISO = f;
+        }
+      }
+      if (!rosterFechaISO) {
+        const vistas = rows.slice(0,8).map(r=>(r||[]).filter(x=>x!==null&&x!=='').slice(0,3).join(' | ')).filter(Boolean).join('\n');
+        alert('No encontré la fecha del roster en la planilla (ni en una fila "Fecha" ni en la columna DIA).\n\nPrimeras filas que leí:\n' + vistas);
+        return;
+      }
+
       const registros = {};
       let cargados = 0;
       for (let i=headerIdx+1; i<rows.length; i++){
@@ -2384,7 +2419,7 @@ function importarRosterReparaciones(file){
         const tiempoH = parseHorasTexto(r[idx.tiempo]);
         if (!patente || tiempoH===null) continue; // fin de la tabla (línea en blanco, sección siguiente, etc.)
         const nOt = r[idx.ot];
-        const fecha = idx.dia>-1 ? fechaValidaISO(r[idx.dia], rosterFechaISO) : rosterFechaISO;
+        const fecha = idx.dia>-1 ? (fechaDeCelda(r[idx.dia]) || rosterFechaISO) : rosterFechaISO;
         const id = `${rosterFechaISO}_${nOt}`.replace(/[^a-zA-Z0-9_-]/g,'_');
         registros[id] = {
           id,
