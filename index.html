@@ -3638,7 +3638,9 @@ function renderDashboard(c) {
     {cod:'07', nombre:'FRENO', re:/freno|pastilla|zapata|campana|pinza/},
     {cod:'08', nombre:'SUSPENSION', re:/suspension|amortigua|elastic|resorte|estabiliz|\bbuje|fuelle|descongel/},
     {cod:'09', nombre:'SISTEMA ELECTRICO', re:/electric|bateria|alternador|arranque|fusible|\bluz\b|luces|lampara|sensor|tablero|alarma|escaner|cableado|\bcable|faro/},
-    {cod:'10', nombre:'CABINA', re:/cabina|asiento|funda|tapizad|parabrisas|lavaparab|escobilla|vidrio|espejo|retrovisor|puerta|cerradura|climatiz|calefaccion/}
+    {cod:'10', nombre:'CABINA', re:/cabina|asiento|funda|tapizad|parabrisas|lavaparab|escobilla|vidrio|espejo|retrovisor|puerta|cerradura|climatiz|calefaccion/},
+    {cod:'11', nombre:'LAVADO COMPLETO', re:/lavado\s+completo/},
+    {cod:'12', nombre:'CAMBIO DE PERTIGA', re:/pertiga/}
   ];
   const CATEGORIAS_INT = [
     {cod:'00', nombre:'MANTENIMIENTO MINA'},
@@ -3648,6 +3650,14 @@ function renderDashboard(c) {
   const sinAcentos = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
   const esRepProgramada = t => { const u = sinAcentos(t).trim(); return u==='pm' || /chequeo mensual/.test(u); };
   function sistemaDeTextos(campos){
+    // "Lavado completo" y "cambio de pértiga" tienen prioridad: son trabajos propios,
+    // no reparaciones de otro sistema.
+    const PRIORIDAD = SISTEMAS_REP.filter(x=>x.cod==='11' || x.cod==='12');
+    for (const campo of campos) {
+      const t = sinAcentos(campo);
+      if (!t) continue;
+      for (const x of PRIORIDAD) if (x.re.test(t)) return x.cod;
+    }
     for (const campo of campos) {
       const t = sinAcentos(campo);
       if (!t) continue;
@@ -3658,12 +3668,16 @@ function renderDashboard(c) {
   function contarCategoriasMes(mesKey){
     const cnt = {}; CATEGORIAS_INT.forEach(c=>cnt[c.cod]=0); cnt.otros = 0;
     let total = 0;
+    const detOtros = [];
     // Mina: rosters
     Object.values(reparacionesReales||{}).forEach(rep=>{
       if (!rep.fecha || !rep.fecha.startsWith(mesKey)) return;
       if (esRepProgramada(rep.tipo)) { cnt['00']++; total++; return; }
       const cod = sistemaDeTextos([rep.tipo, rep.causa]);
-      if (cod) cnt[cod]++; else cnt.otros++;
+      if (cod) cnt[cod]++; else {
+        cnt.otros++;
+        detOtros.push({ fecha: rep.fecha, patente: rep.patente||'', origen: 'Roster (mina)', texto: [rep.tipo, rep.causa].filter(Boolean).join(' — ') });
+      }
       total++;
     });
     // San Juan: OT de Sede
@@ -3673,10 +3687,14 @@ function renderDashboard(c) {
       if (clasificarLugarOT(o)!=='sede') return;
       if (o.tipo==='PM') { cnt['01']++; total++; return; }
       const cod = sistemaDeTextos([...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)]);
-      if (cod) cnt[cod]++; else cnt.otros++;
+      if (cod) cnt[cod]++; else {
+        cnt.otros++;
+        const txt = [...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)].filter(Boolean).join('; ');
+        detOtros.push({ fecha: o.fecha_iso, patente: o.patente||'', origen: 'OT Sede' + (o.nro ? ' N° '+o.nro : ''), texto: txt });
+      }
       total++;
     }));
-    return { cnt, total };
+    return { cnt, total, detOtros };
   }
 
   html += `<div class="sec-hdr" style="margin:18px 0 12px;">Intervenciones por categoría</div>`;
@@ -3717,7 +3735,17 @@ function renderDashboard(c) {
         <tbody>${filasSis}</tbody>
       </table>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Porcentaje sobre las intervenciones del mes, con la cantidad entre paréntesis; cada columna suma 100%. 00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, clasificadas automáticamente según lo que dice cada reparación.</div>`;
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Porcentaje sobre las intervenciones del mes, con la cantidad entre paréntesis; cada columna suma 100%. 00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, 11 = lavado completo y 12 = cambio de pértiga, clasificados automáticamente según lo que dice cada intervención.</div>`;
+
+    const escH = t => String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const listaOtros = colsSis.flatMap(x=>x.r.detOtros).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+    if (listaOtros.length) {
+      html += `<details style="margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 14px;">
+        <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text2);">Ver las ${listaOtros.length} intervenciones sin clasificar</summary>
+        <div style="max-height:340px;overflow-y:auto;margin-top:8px;">${listaOtros.map(d=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:11.5px;color:var(--text2);line-height:1.4;">
+          <strong style="color:var(--text);">${d.fecha ? d.fecha.split('-').reverse().join('/') : '—'}</strong> · ${escH(d.patente)} · <span style="color:var(--text3);">${escH(d.origen)}</span><br>${d.texto ? escH(d.texto.length>220 ? d.texto.slice(0,220)+'…' : d.texto) : '<em style="color:var(--text3);">(sin descripción de trabajos ni repuestos)</em>'}
+        </div>`).join('')}</div></details>`;
+    }
   }
 
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
