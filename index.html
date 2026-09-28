@@ -1286,6 +1286,15 @@ whenAuthReady(()=> refRepuestos.on('value', snap => {
   repuestosData = data ? Object.values(data) : [];
 }));
 
+// Categorías de intervenciones que están desplegadas en el Dashboard
+var subcatAbiertas = {};
+function toggleSubcat(cod){
+  subcatAbiertas[cod] = !subcatAbiertas[cod];
+  document.querySelectorAll('tr[data-parent="'+cod+'"]').forEach(tr=>{ tr.style.display = subcatAbiertas[cod] ? '' : 'none'; });
+  const c = document.getElementById('caret-'+cod);
+  if (c) c.textContent = subcatAbiertas[cod] ? '▾' : '▸';
+}
+
 // Estado de Pago (Anexo E-2) — solo queda el último cargado
 let estadoPagoData = null;
 whenAuthReady(()=> db.ref('estado_pago').on('value', snap => {
@@ -3649,20 +3658,32 @@ function renderDashboard(c) {
   // Sede de las OT correctivas de Sede. Las OT de mina no se cuentan acá para no
   // duplicar lo que ya está en los rosters.
   const SISTEMAS_REP = [
-    {cod:'02', nombre:'MOTOR', re:/turbo|inyect|sensor map|baja potencia|potencia|refriger|radiador|combustible|dpf|escape|distribuc|correa|bujia|calentad|\bmotor\b/},
+    {cod:'02', nombre:'MOTOR', re:/turbo|inyect|sensor map|baja potencia|potencia|refriger|radiador|combustible|dpf|escape|distribuc|correa|bujia|calentad|\bmotor\b/,
+      subs:[ {nombre:'Turbo', re:/turbo|geometria/}, {nombre:'Combustible / inyección', re:/inyect|combustible/}, {nombre:'Refrigeración', re:/refriger|radiador|calentad/},
+             {nombre:'Potencia / sensor MAP', re:/potencia|sensor map/}, {nombre:'DPF / escape', re:/dpf|escape/}, {nombre:'Distribución / correas', re:/distribuc|correa|bujia/} ]},
     {cod:'03', nombre:'EMBRAGUE', re:/embrague|clutch/},
     {cod:'04', nombre:'CAJA DE CAMBIOS', re:/caja de cambio|caja de velocidad|caja automatica/},
-    {cod:'05', nombre:'TRANSMISION', re:/transmision|cardan|diferencial|\bdoble\b|semi ?eje|palier|traccion|4x4|reductora|transfer/},
-    {cod:'06', nombre:'EJE DELANTERO /DIRECCION /CUBOS/RUEDAS', re:/direccion|eje delantero|cubo|rueda|neumatic|cubierta|rulem|rodamiento|\bbba\b|cremallera|rotula|alineacion|balanceo/},
-    {cod:'07', nombre:'FRENO', re:/freno|pastilla|zapata|campana|pinza/},
-    {cod:'08', nombre:'SUSPENSION', re:/suspension|amortigua|elastic|resorte|estabiliz|\bbuje|fuelle|descongel/},
-    {cod:'09', nombre:'SISTEMA ELECTRICO', re:/electric|bateria|alternador|arranque|fusible|\bluz\b|luces|lampara|sensor|tablero|alarma|escaner|cableado|\bcable|faro/},
-    {cod:'10', nombre:'CABINA', re:/cabina|asiento|funda|tapizad|parabrisas|lavaparab|escobilla|vidrio|espejo|retrovisor|puerta|cerradura|climatiz|calefaccion/},
+    {cod:'05', nombre:'TRANSMISION', re:/transmision|cardan|diferencial|\bdoble\b|semi ?eje|palier|traccion|4x4|reductora|transfer/,
+      subs:[ {nombre:'Semiejes y palier', re:/semi ?eje|palier/}, {nombre:'Doble tracción / 4x4', re:/\bdoble\b|4x4|traccion|reductora|transfer/}, {nombre:'Cardán / diferencial', re:/cardan|diferencial/} ]},
+    {cod:'06', nombre:'EJE DELANTERO /DIRECCION /CUBOS/RUEDAS', re:/direccion|eje delantero|cubo|rueda|neumatic|cubierta|rulem|rodamiento|\bbba\b|cremallera|rotula|alineacion|balanceo/,
+      subs:[ {nombre:'Dirección', re:/direccion|cremallera|\bbba\b|rotula/}, {nombre:'Cubos y rodamientos', re:/cubo|rulem|rodamiento/}, {nombre:'Ruedas y neumáticos', re:/rueda|neumatic|cubierta|oruga/},
+             {nombre:'Alineación y balanceo', re:/alineacion|balanceo/}, {nombre:'Eje delantero', re:/eje delantero/} ]},
+    {cod:'07', nombre:'FRENO', re:/freno|pastilla|zapata|campana|pinza/,
+      subs:[ {nombre:'Pastillas, zapatas y campanas', re:/pastilla|zapata|campana|pinza/}, {nombre:'Líquido de freno', re:/liquid\w*\s+(de\s+)?freno/}, {nombre:'Sistema de frenos (general)', re:/freno/} ]},
+    {cod:'08', nombre:'SUSPENSION', re:/suspension|amortigua|elastic|resorte|estabiliz|\bbuje|fuelle|descongel/,
+      subs:[ {nombre:'Amortiguadores', re:/amortigua/}, {nombre:'Elásticos y resortes', re:/elastic|resorte/}, {nombre:'Barra estabilizadora', re:/estabiliz/},
+             {nombre:'Bujes y fuelles', re:/\bbuje|fuelle/}, {nombre:'Descongelamiento', re:/descongel/}, {nombre:'Suspensión (general)', re:/suspension/} ]},
+    {cod:'09', nombre:'SISTEMA ELECTRICO', re:/electric|bateria|alternador|arranque|fusible|\bluz\b|luces|lampara|sensor|tablero|alarma|escaner|cableado|\bcable|faro/,
+      subs:[ {nombre:'Batería', re:/bateria/}, {nombre:'Luces y lámparas', re:/\bluz\b|luces|lampara|\blamp\b|faro/}, {nombre:'Fusibles y cableado', re:/fusible|cableado|\bcable/},
+             {nombre:'Alarma / tablero / escáner', re:/alarma|tablero|escaner|sensor/}, {nombre:'Arranque y alternador', re:/arranque|alternador/}, {nombre:'Eléctrico (general)', re:/electric/} ]},
+    {cod:'10', nombre:'CABINA', re:/cabina|asiento|funda|tapizad|parabrisas|lavaparab|escobilla|vidrio|espejo|retrovisor|puerta|cerradura|climatiz|calefaccion/,
+      subs:[ {nombre:'Escobillas y lavaparabrisas', re:/escobilla|parabrisas|lavaparab/}, {nombre:'Vidrios y espejos', re:/vidrio|espejo|retrovisor/}, {nombre:'Asientos y fundas', re:/asiento|funda|tapizad/},
+             {nombre:'Puertas y cerraduras', re:/puerta|cerradura/}, {nombre:'Climatización', re:/climatiz|calefaccion/}, {nombre:'Cabina (general)', re:/cabina/} ]},
     {cod:'11', nombre:'LAVADO COMPLETO', re:/lavado\s+completo/},
     {cod:'12', nombre:'CAMBIO DE PERTIGA', re:/pertiga/}
   ];
   const CATEGORIAS_INT = [
-    {cod:'00', nombre:'MANTENIMIENTO MINA'},
+    {cod:'00', nombre:'MANTENIMIENTO MINA', subs:[ {nombre:'PM', re:/^pm/}, {nombre:'Chequeo mensual', re:/chequeo mensual/} ]},
     {cod:'01', nombre:'MANTENIMIENTO SAN JUAN'},
     ...SISTEMAS_REP
   ];
@@ -3679,16 +3700,30 @@ function renderDashboard(c) {
     for (const t of ts) if (/lavado\s+completo/.test(t)) return '11';
     return null;
   }
+  // Subcategoría dentro de una categoría: la primera que coincide con el texto; si ninguna, "Otros".
+  function subDeCategoria(cod, campos){
+    const cat = CATEGORIAS_INT.find(c=>c.cod===cod);
+    if (!cat || !cat.subs) return null;
+    for (const c of campos) {
+      const t = sinAcentos(c);
+      if (!t) continue;
+      for (const sb of cat.subs) if (sb.re.test(t)) return sb.nombre;
+    }
+    return 'Otros';
+  }
+
   function contarCategoriasMes(mesKey){
     const cnt = {}; CATEGORIAS_INT.forEach(c=>cnt[c.cod]=0); cnt.otros = 0;
     let total = 0;
     const detOtros = [];
+    const sub = {}; // sub[cod][nombre] = cantidad
+    const addSub = (cod, campos) => { const n = subDeCategoria(cod, campos); if (n) { (sub[cod] = sub[cod] || {})[n] = (sub[cod][n]||0) + 1; } };
     // Mina: rosters
     Object.values(reparacionesReales||{}).forEach(rep=>{
       if (!rep.fecha || !rep.fecha.startsWith(mesKey)) return;
-      if (esRepProgramada(rep.tipo)) { cnt['00']++; total++; return; }
+      if (esRepProgramada(rep.tipo)) { cnt['00']++; addSub('00',[rep.tipo]); total++; return; }
       const cod = sistemaDeTextos([rep.tipo, rep.causa]);
-      if (cod) cnt[cod]++; else {
+      if (cod) { cnt[cod]++; addSub(cod,[rep.tipo, rep.causa]); } else {
         cnt.otros++;
         detOtros.push({ fecha: rep.fecha, patente: rep.patente||'', origen: 'Roster (mina)', texto: [rep.tipo, rep.causa].filter(Boolean).join(' — ') });
       }
@@ -3701,14 +3736,14 @@ function renderDashboard(c) {
       if (clasificarLugarOT(o)!=='sede') return;
       if (o.tipo==='PM') { cnt['01']++; total++; return; }
       const cod = sistemaDeTextos([...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)]);
-      if (cod) cnt[cod]++; else {
+      if (cod) { cnt[cod]++; addSub(cod,[...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)]); } else {
         cnt.otros++;
         const txt = [...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)].filter(Boolean).join('; ');
         detOtros.push({ fecha: o.fecha_iso, patente: o.patente||'', origen: 'OT Sede' + (o.nro ? ' N° '+o.nro : ''), texto: txt });
       }
       total++;
     }));
-    return { cnt, total, detOtros };
+    return { cnt, total, detOtros, sub };
   }
 
   html += `<div class="sec-hdr" style="margin:18px 0 12px;">Intervenciones por categoría</div>`;
@@ -3721,11 +3756,25 @@ function renderDashboard(c) {
     const celdaSis = (n,t) => (t>0 && n>0) ? `${(n/t*100).toLocaleString('es-AR',{maximumFractionDigits:1})}% <span style="color:var(--text3);">(${n})</span>` : '—';
     let filasSis = '';
     CATEGORIAS_INT.forEach(s=>{
-      filasSis += `<tr style="border-bottom:1px solid var(--border);">
-        <td style="padding:7px 8px;color:var(--text);font-size:11.5px;">${s.cod}-${s.nombre}</td>
+      // subcategorías con datos en algún mes
+      const nombresSub = [];
+      (s.subs||[]).forEach(sb=>{ if (colsSis.some(x=>((x.r.sub[s.cod]||{})[sb.nombre]||0)>0)) nombresSub.push(sb.nombre); });
+      if (colsSis.some(x=>((x.r.sub[s.cod]||{})['Otros']||0)>0)) nombresSub.push('Otros');
+      const expandible = nombresSub.length>0 && sumaCod(s.cod)>0;
+      const abierta = !!subcatAbiertas[s.cod];
+      filasSis += `<tr style="border-bottom:1px solid var(--border);${expandible?'cursor:pointer;':''}" ${expandible?`onclick="toggleSubcat('${s.cod}')"`:''}>
+        <td style="padding:7px 8px;color:var(--text);font-size:11.5px;"><span id="caret-${s.cod}" style="display:inline-block;width:14px;color:var(--text3);">${expandible ? (abierta?'▾':'▸') : ''}</span>${s.cod}-${s.nombre}</td>
         ${colsSis.map(x=>`<td style="padding:7px 8px;text-align:right;color:var(--text2);white-space:nowrap;">${celdaSis(x.r.cnt[s.cod], x.r.total)}</td>`).join('')}
         <td style="padding:7px 8px;text-align:right;color:var(--text);font-weight:700;white-space:nowrap;">${celdaSis(sumaCod(s.cod), totalGlobal)}</td>
       </tr>`;
+      if (expandible) nombresSub.forEach(nom=>{
+        const totSub = colsSis.reduce((a,x)=>a+(((x.r.sub[s.cod]||{})[nom])||0),0);
+        filasSis += `<tr data-parent="${s.cod}" style="border-bottom:1px solid var(--border);background:rgba(255,255,255,0.03);${abierta?'':'display:none;'}">
+          <td style="padding:6px 8px 6px 34px;color:var(--text2);font-size:11px;">${nom}</td>
+          ${colsSis.map(x=>`<td style="padding:6px 8px;text-align:right;color:var(--text3);font-size:11px;white-space:nowrap;">${celdaSis(((x.r.sub[s.cod]||{})[nom])||0, x.r.total)}</td>`).join('')}
+          <td style="padding:6px 8px;text-align:right;color:var(--text2);font-size:11px;white-space:nowrap;">${celdaSis(totSub, totalGlobal)}</td>
+        </tr>`;
+      });
     });
     filasSis += `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:7px 8px;color:var(--text3);font-size:11.5px;">Sin clasificar</td>
@@ -3749,7 +3798,7 @@ function renderDashboard(c) {
         <tbody>${filasSis}</tbody>
       </table>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Porcentaje sobre las intervenciones del mes, con la cantidad entre paréntesis; cada columna suma 100%. 00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, 11 = lavado completo y 12 = cambio de pértiga (estos dos cuentan solo cuando la intervención no incluye la reparación de otro sistema), clasificados automáticamente según lo que dice cada intervención.</div>`;
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Porcentaje sobre las intervenciones del mes, con la cantidad entre paréntesis; cada columna suma 100%. 00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, 11 = lavado completo y 12 = cambio de pértiga (estos dos cuentan solo cuando la intervención no incluye la reparación de otro sistema), clasificados automáticamente según lo que dice cada intervención. Tocá una categoría con ▸ para ver sus subcategorías.</div>`;
 
     const escH = t => String(t==null?'':t).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     const listaOtros = colsSis.flatMap(x=>x.r.detOtros).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
