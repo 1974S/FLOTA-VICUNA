@@ -3499,6 +3499,11 @@ function renderDashboard(c) {
   // intervenciones del mes. Primero se mira quién intervino (técnico /
   // supervisor de la OT); si no alcanza, se usa el "Sector" de la OT.
   function clasificarLugarOT(o){
+    // 1) Nombre del asesor de servicio de la OT: Ares = Sede; Manzini o Quiroga = Mina.
+    const asesor = (o.asesor||'').toString().toLowerCase();
+    if (/\bares\b/.test(asesor)) return 'sede';
+    if (/manzini|quiroga/.test(asesor)) return 'mina';
+    // 2) Si el asesor no ayuda, técnico / supervisor de la OT.
     const quien = ((o.tecnico||'')+' '+(o.supervisor||'')).toLowerCase();
     if (/\bares\b/.test(quien)) return 'sede';
     if (/manzini|quiroga/.test(quien)) return 'mina';
@@ -3546,7 +3551,7 @@ function renderDashboard(c) {
       </div>
     </div>` : `<div style="font-size:13px;color:var(--text2);">Todavía no hay órdenes de trabajo cargadas este mes.</div>`}
     ${comp('Mes anterior ('+nombreMesAnt+')', lugAnterior.total>0 ? `Sede ${fmtPct(pSedeAnt)} · Mina ${fmtPct(pMinaAnt)} (${lugAnterior.total} órdenes)` : 'sin órdenes cargadas')}
-    <div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Sede = OT de Diego Ares (o sector SJ). Mina = OT de Manzini o Quiroga (o sector Mina). Entre las dos suman el 100% de las intervenciones.${lugActual.sin>0 ? ` ${lugActual.sin} orden${lugActual.sin!==1?'es':''} de este mes sin poder clasificar (no figura técnico ni sector).` : ''}</div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Se clasifica por el nombre: Sede = OT de Diego Ares; Mina = OT de Manzini o Quiroga (se mira el asesor de servicio y, si no figura, el técnico o supervisor; como último recurso, el sector). Entre las dos suman el 100% de las intervenciones.${lugActual.sin>0 ? ` ${lugActual.sin} orden${lugActual.sin!==1?'es':''} de este mes sin poder clasificar (no figura técnico ni sector).` : ''}</div>
   </div>`;
 
   let filasLugar = '';
