@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vicuna-v54';
+const CACHE_NAME = 'vicuna-v55';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -15,5 +15,5 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   if(e.request.method!=='GET') return;
-  e.respondWith(fetch(e.request).then(r=>{const c=r.clone();caches.open(CACHE_NAME).then(x=>x.put(e.request,c));return r;}).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html'))));
+  e.respondWith(fetch(e.request,{cache:'no-cache'}).then(r=>{const c=r.clone();caches.open(CACHE_NAME).then(x=>x.put(e.request,c));return r;}).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html'))));
 });

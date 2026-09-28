@@ -576,7 +576,7 @@ body {
         <div class="brand-icon">🔧</div>
         <div class="brand-text">
           <div class="brand-title">Flota Vicuña</div>
-          <div class="brand-sub">Proyecto Vicuña · Flota 65 unidades</div>
+          <div class="brand-sub">Proyecto Vicuña · Flota 65 unidades · v55</div>
         </div>
       </div>
       <button class="btn-add-nav" onclick="openAdd()" aria-label="Nuevo turno">+</button>
@@ -1858,7 +1858,22 @@ function delEv() {
 
 // ── SERVICE WORKER ─────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const habiaControlador = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    // En la PC la pestaña puede quedar abierta días con la versión vieja: buscar una nueva
+    // cada vez que se vuelve a la pestaña y cada 30 minutos.
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(()=>{}); });
+    setInterval(() => reg.update().catch(()=>{}), 30*60*1000);
+  }).catch(() => {});
+  // Cuando la versión nueva toma el control, avisar (sin recargar solo, para no perder lo que se esté cargando).
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!habiaControlador || document.getElementById('bannerNuevaVersion')) return;
+    const b = document.createElement('div');
+    b.id = 'bannerNuevaVersion';
+    b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:100001;background:#CC0000;color:#fff;padding:12px 14px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.4);';
+    b.innerHTML = '<span>Hay una versión nueva de la app</span><button onclick="location.reload()" style="background:#fff;color:#CC0000;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">Actualizar</button>';
+    document.body.appendChild(b);
+  });
 }
 
 // ── URL SHORTCUT ───────────────────────────────────────────
