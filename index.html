@@ -3493,6 +3493,185 @@ function renderDashboard(c) {
   </div>
   <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">* Mes en curso, calculado hasta hoy (${diasTranscurridos} días). Los meses futuros todavía no tienen datos.</div>`;
 
+  // ---- Intervenciones por lugar: Sede vs Mina (según las OT importadas) ----
+  // Sede = OT hechas en el taller de San Juan (Diego Ares). Mina = OT hechas
+  // en mina por Manzini o Quiroga. Entre las dos suman el 100% de las
+  // intervenciones del mes. Primero se mira quién intervino (técnico /
+  // supervisor de la OT); si no alcanza, se usa el "Sector" de la OT.
+  function clasificarLugarOT(o){
+    const quien = ((o.tecnico||'')+' '+(o.supervisor||'')).toLowerCase();
+    if (/\bares\b/.test(quien)) return 'sede';
+    if (/manzini|quiroga/.test(quien)) return 'mina';
+    const sec = (o.sector||'').toString().trim().toLowerCase();
+    if (sec==='mina') return 'mina';
+    if (sec==='sj') return 'sede';
+    return null;
+  }
+  function contarLugarMes(mesKey){
+    let sede=0, mina=0, sin=0;
+    Object.values(otData||{}).forEach(arr=>(arr||[]).forEach(o=>{
+      if(!o.fecha_iso || !o.fecha_iso.startsWith(mesKey)) return;
+      if(o.tipo==='Venta') return;
+      const l = clasificarLugarOT(o);
+      if(l==='sede') sede++; else if(l==='mina') mina++; else sin++;
+    }));
+    return { sede, mina, sin, total: sede+mina };
+  }
+  const pctLugar = (n,t) => t>0 ? Math.round(n/t*1000)/10 : null;
+  const fmtPct = p => p===null ? '—' : p.toLocaleString('es-AR',{maximumFractionDigits:1})+'%';
+
+  const lugActual = contarLugarMes(mesActualKey);
+  const lugAnterior = contarLugarMes(mesAnteriorKey);
+  const pSedeAct = pctLugar(lugActual.sede, lugActual.total), pMinaAct = pctLugar(lugActual.mina, lugActual.total);
+  const pSedeAnt = pctLugar(lugAnterior.sede, lugAnterior.total), pMinaAnt = pctLugar(lugAnterior.mina, lugAnterior.total);
+
+  html += `<div class="sec-hdr" style="margin:18px 0 12px;">Intervenciones: Sede vs Mina</div>`;
+  html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px;">
+    <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:10px;">ÓRDENES DE TRABAJO — ${nombreMesDisp}</div>
+    ${lugActual.total>0 ? `
+    <div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--bg);margin-bottom:12px;">
+      <div style="width:${pSedeAct}%;background:#0A6EBD;"></div>
+      <div style="width:${pMinaAct}%;background:#FF9500;"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div>
+        <div style="font-size:11.5px;color:var(--text3);"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#0A6EBD;margin-right:5px;"></span>Sede (taller San Juan)</div>
+        <div style="font-size:26px;font-weight:800;color:var(--text);line-height:1.2;">${fmtPct(pSedeAct)}</div>
+        <div style="font-size:11.5px;color:var(--text2);">${lugActual.sede} orden${lugActual.sede!==1?'es':''}</div>
+      </div>
+      <div>
+        <div style="font-size:11.5px;color:var(--text3);"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#FF9500;margin-right:5px;"></span>Mina</div>
+        <div style="font-size:26px;font-weight:800;color:var(--text);line-height:1.2;">${fmtPct(pMinaAct)}</div>
+        <div style="font-size:11.5px;color:var(--text2);">${lugActual.mina} orden${lugActual.mina!==1?'es':''}</div>
+      </div>
+    </div>` : `<div style="font-size:13px;color:var(--text2);">Todavía no hay órdenes de trabajo cargadas este mes.</div>`}
+    ${comp('Mes anterior ('+nombreMesAnt+')', lugAnterior.total>0 ? `Sede ${fmtPct(pSedeAnt)} · Mina ${fmtPct(pMinaAnt)} (${lugAnterior.total} órdenes)` : 'sin órdenes cargadas')}
+    <div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Sede = OT de Diego Ares (o sector SJ). Mina = OT de Manzini o Quiroga (o sector Mina). Entre las dos suman el 100% de las intervenciones.${lugActual.sin>0 ? ` ${lugActual.sin} orden${lugActual.sin!==1?'es':''} de este mes sin poder clasificar (no figura técnico ni sector).` : ''}</div>
+  </div>`;
+
+  let filasLugar = '';
+  mesesEvol.forEach(m=>{
+    if (m.esFuturo) { filasLugar += `<tr style="border-bottom:1px solid var(--border);"><td style="padding:7px 8px;color:var(--text);">${m.nombre}</td><td style="padding:7px 8px;text-align:right;color:var(--text2);">—</td><td style="padding:7px 8px;text-align:right;color:var(--text2);">—</td><td style="padding:7px 8px;text-align:right;color:var(--text2);">—</td></tr>`; return; }
+    const c = contarLugarMes(m.key);
+    const ps = pctLugar(c.sede,c.total), pm = pctLugar(c.mina,c.total);
+    filasLugar += `<tr style="border-bottom:1px solid var(--border);${m.esActual?'background:rgba(204,0,0,0.08);':''}">
+      <td style="padding:7px 8px;font-weight:${m.esActual?'700':'500'};color:var(--text);white-space:nowrap;">${m.nombre}${m.esActual?' *':''}</td>
+      <td style="padding:7px 8px;text-align:right;color:var(--text2);">${c.total>0 ? fmtPct(ps)+' <span style="color:var(--text3);">('+c.sede+')</span>' : '—'}</td>
+      <td style="padding:7px 8px;text-align:right;color:var(--text2);">${c.total>0 ? fmtPct(pm)+' <span style="color:var(--text3);">('+c.mina+')</span>' : '—'}</td>
+      <td style="padding:7px 8px;text-align:right;color:var(--text2);">${c.total>0 ? c.total : '—'}</td>
+    </tr>`;
+  });
+  html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:4px 4px 8px;margin-bottom:14px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:360px;">
+      <thead>
+        <tr style="border-bottom:1.5px solid var(--border);">
+          <th style="text-align:left;padding:9px 8px;color:var(--text3);font-size:10.5px;letter-spacing:.03em;">MES</th>
+          <th style="text-align:right;padding:9px 8px;color:var(--text3);font-size:10.5px;letter-spacing:.03em;">SEDE</th>
+          <th style="text-align:right;padding:9px 8px;color:var(--text3);font-size:10.5px;letter-spacing:.03em;">MINA</th>
+          <th style="text-align:right;padding:9px 8px;color:var(--text3);font-size:10.5px;letter-spacing:.03em;">TOTAL OT</th>
+        </tr>
+      </thead>
+      <tbody>${filasLugar}</tbody>
+    </table>
+  </div>`;
+
+  // ---- Intervenciones por categoría (códigos 00 al 10, suman 100%) ----
+  // 00 = mantenimiento (PM y chequeos mensuales) hecho en mina  -> sale de los rosters.
+  // 01 = mantenimiento hecho en San Juan                         -> sale de las OT de Sede (tipo PM).
+  // 02 al 10 = reparaciones por sistema: las de mina salen de los rosters y las de
+  // Sede de las OT correctivas de Sede. Las OT de mina no se cuentan acá para no
+  // duplicar lo que ya está en los rosters.
+  const SISTEMAS_REP = [
+    {cod:'02', nombre:'MOTOR', re:/turbo|inyect|sensor map|baja potencia|potencia|refriger|radiador|combustible|dpf|escape|distribuc|correa|bujia|calentad|\bmotor\b/},
+    {cod:'03', nombre:'EMBRAGUE', re:/embrague|clutch/},
+    {cod:'04', nombre:'CAJA DE CAMBIOS', re:/caja de cambio|caja de velocidad|caja automatica/},
+    {cod:'05', nombre:'TRANSMISION', re:/transmision|cardan|diferencial|\bdoble\b|semi ?eje|palier|traccion|4x4|reductora|transfer/},
+    {cod:'06', nombre:'EJE DELANTERO /DIRECCION /CUBOS/RUEDAS', re:/direccion|eje delantero|cubo|rueda|neumatic|cubierta|rulem|rodamiento|\bbba\b|cremallera|rotula|alineacion|balanceo/},
+    {cod:'07', nombre:'FRENO', re:/freno|pastilla|zapata|campana|pinza/},
+    {cod:'08', nombre:'SUSPENSION', re:/suspension|amortigua|elastic|resorte|estabiliz|\bbuje|fuelle|descongel/},
+    {cod:'09', nombre:'SISTEMA ELECTRICO', re:/electric|bateria|alternador|arranque|fusible|\bluz\b|luces|lampara|sensor|tablero|alarma|escaner|cableado|\bcable|faro/},
+    {cod:'10', nombre:'CABINA', re:/cabina|asiento|funda|tapizad|parabrisas|lavaparab|escobilla|vidrio|espejo|retrovisor|puerta|cerradura|climatiz|calefaccion/}
+  ];
+  const CATEGORIAS_INT = [
+    {cod:'00', nombre:'MANTENIMIENTO MINA'},
+    {cod:'01', nombre:'MANTENIMIENTO SAN JUAN'},
+    ...SISTEMAS_REP
+  ];
+  const sinAcentos = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const esRepProgramada = t => { const u = sinAcentos(t).trim(); return u==='pm' || /chequeo mensual/.test(u); };
+  function sistemaDeTextos(campos){
+    for (const campo of campos) {
+      const t = sinAcentos(campo);
+      if (!t) continue;
+      for (const s of SISTEMAS_REP) if (s.re.test(t)) return s.cod;
+    }
+    return null;
+  }
+  function contarCategoriasMes(mesKey){
+    const cnt = {}; CATEGORIAS_INT.forEach(c=>cnt[c.cod]=0); cnt.otros = 0;
+    let total = 0;
+    // Mina: rosters
+    Object.values(reparacionesReales||{}).forEach(rep=>{
+      if (!rep.fecha || !rep.fecha.startsWith(mesKey)) return;
+      if (esRepProgramada(rep.tipo)) { cnt['00']++; total++; return; }
+      const cod = sistemaDeTextos([rep.tipo, rep.causa]);
+      if (cod) cnt[cod]++; else cnt.otros++;
+      total++;
+    });
+    // San Juan: OT de Sede
+    Object.values(otData||{}).forEach(arr=>(arr||[]).forEach(o=>{
+      if (!o.fecha_iso || !o.fecha_iso.startsWith(mesKey)) return;
+      if (o.tipo==='Venta') return;
+      if (clasificarLugarOT(o)!=='sede') return;
+      if (o.tipo==='PM') { cnt['01']++; total++; return; }
+      const cod = sistemaDeTextos([...(o.trabajos||[]).map(t=>t.desc), ...(o.repuestos||[]).map(r=>r.desc)]);
+      if (cod) cnt[cod]++; else cnt.otros++;
+      total++;
+    }));
+    return { cnt, total };
+  }
+
+  html += `<div class="sec-hdr" style="margin:18px 0 12px;">Intervenciones por categoría</div>`;
+  const colsSis = mesesEvol.filter(m=>!m.esFuturo).map(m=>({ m, r: contarCategoriasMes(m.key) })).filter(x=>x.r.total>0);
+  if (!colsSis.length) {
+    html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2);">Todavía no hay intervenciones cargadas (rosters u órdenes de trabajo).</div>`;
+  } else {
+    const totalGlobal = colsSis.reduce((s,x)=>s+x.r.total,0);
+    const sumaCod = cod => colsSis.reduce((s,x)=>s+x.r.cnt[cod],0);
+    const celdaSis = (n,t) => (t>0 && n>0) ? `${(n/t*100).toLocaleString('es-AR',{maximumFractionDigits:1})}% <span style="color:var(--text3);">(${n})</span>` : '—';
+    let filasSis = '';
+    CATEGORIAS_INT.forEach(s=>{
+      filasSis += `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:7px 8px;color:var(--text);font-size:11.5px;">${s.cod}-${s.nombre}</td>
+        ${colsSis.map(x=>`<td style="padding:7px 8px;text-align:right;color:var(--text2);white-space:nowrap;">${celdaSis(x.r.cnt[s.cod], x.r.total)}</td>`).join('')}
+        <td style="padding:7px 8px;text-align:right;color:var(--text);font-weight:700;white-space:nowrap;">${celdaSis(sumaCod(s.cod), totalGlobal)}</td>
+      </tr>`;
+    });
+    filasSis += `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:7px 8px;color:var(--text3);font-size:11.5px;">Sin clasificar</td>
+      ${colsSis.map(x=>`<td style="padding:7px 8px;text-align:right;color:var(--text3);white-space:nowrap;">${celdaSis(x.r.cnt.otros, x.r.total)}</td>`).join('')}
+      <td style="padding:7px 8px;text-align:right;color:var(--text3);font-weight:700;white-space:nowrap;">${celdaSis(sumaCod('otros'), totalGlobal)}</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;color:var(--text);font-weight:700;font-size:11.5px;">Total intervenciones</td>
+      ${colsSis.map(x=>`<td style="padding:8px;text-align:right;color:var(--text);font-weight:700;">${x.r.total}</td>`).join('')}
+      <td style="padding:8px;text-align:right;color:var(--text);font-weight:700;">${totalGlobal}</td>
+    </tr>`;
+    html += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:4px 4px 8px;margin-bottom:8px;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:${300 + colsSis.length*80}px;">
+        <thead>
+          <tr style="border-bottom:1.5px solid var(--border);">
+            <th style="text-align:left;padding:9px 8px;color:var(--text3);font-size:10.5px;letter-spacing:.03em;">CATEGORÍA</th>
+            ${colsSis.map(x=>`<th style="text-align:right;padding:9px 8px;color:var(--text3);font-size:10.5px;letter-spacing:.03em;">${x.m.nombre.toUpperCase()}</th>`).join('')}
+            <th style="text-align:right;padding:9px 8px;color:var(--text3);font-size:10.5px;letter-spacing:.03em;">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>${filasSis}</tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Porcentaje sobre las intervenciones del mes, con la cantidad entre paréntesis; cada columna suma 100%. 00 = PM y chequeos mensuales en mina (rosters). 01 = PM en San Juan (OT de Sede). 02 al 10 = reparaciones por sistema, clasificadas automáticamente según lo que dice cada reparación.</div>`;
+  }
+
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
   html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
 
