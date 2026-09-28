@@ -3344,6 +3344,7 @@ function renderDashboard(c) {
     // Km recorridos por la flota en ese mes (lecturas de km_efectivo de las OT):
     // por patente, última lectura ANTES del mes vs. la más reciente hasta fechaLimite.
     let kmRec=0, unidadesKm=0;
+    const unidadesSet = new Set();
     if (typeof otData !== 'undefined' && otData) {
       const inicioStr = mesKey + '-01';
       Object.keys(otData).forEach(patente=>{
@@ -3353,11 +3354,29 @@ function renderDashboard(c) {
           if(o.fecha_iso < inicioStr) kmIni = o.km_efectivo;
           if(o.fecha_iso <= fechaLimite) kmFin = o.km_efectivo;
         });
-        if(kmIni!==null && kmFin!==null && kmFin>kmIni){ kmRec += (kmFin-kmIni); unidadesKm++; }
+        if(kmIni!==null && kmFin!==null && kmFin>kmIni){ kmRec += (kmFin-kmIni); unidadesKm++; unidadesSet.add(patente.toString().trim().toUpperCase()); }
       });
     }
     const mkbf = eImprev>0 ? (kmRec/eImprev) : null;
-    const mkbfProg = eProg>0 ? (kmRec/eProg) : null;
+
+    // MKBF programado: km de las unidades con lectura ÷ PM realizados de ESAS mismas
+    // unidades. Cuenta los PM de las OT (tipo PM) y de los rosters (tipo PM), sin
+    // repetir el mismo PM (misma patente y fecha) si está en los dos. No incluye
+    // las inspecciones mensuales ni los turnos agendados que no se hicieron.
+    const pmKeys = new Set();
+    const enRango = f => f && f.startsWith(mesKey) && f <= fechaLimite;
+    Object.keys(otData||{}).forEach(pat=>{
+      if(!unidadesSet.has(pat.toString().trim().toUpperCase())) return;
+      (otData[pat]||[]).forEach(o=>{ if(o.tipo==='PM' && enRango(o.fecha_iso)) pmKeys.add(pat.toString().trim().toUpperCase()+'|'+o.fecha_iso); });
+    });
+    Object.values(reparacionesReales||{}).forEach(rep=>{
+      const pat = (rep.patente||'').toString().trim().toUpperCase();
+      if(!unidadesSet.has(pat) || !enRango(rep.fecha)) return;
+      const t = (rep.tipo||'').toString().trim().toLowerCase();
+      if (t==='pm' || t.startsWith('pm/') || t.startsWith('pm ')) pmKeys.add(pat+'|'+rep.fecha);
+    });
+    const nPM = pmKeys.size;
+    const mkbfProg = nPM>0 ? (kmRec/nPM) : null;
 
     // MTTR real: promedio de "tiempoReparacionHoras" de los rosters cargados
     // para ese mes, excluyendo los que dicen "PM" (eso es mantenimiento
@@ -3374,7 +3393,7 @@ function renderDashboard(c) {
     });
     const mttrReal = cantReales>0 ? (sumaHorasReales/cantReales) : null;
 
-    return { hProg, hImprev, hTotal, eProg, eImprev, hDisp, dispPct, kmRec, unidadesKm, mkbf, mkbfProg, mttrReal, cantReales };
+    return { hProg, hImprev, hTotal, eProg, eImprev, hDisp, dispPct, kmRec, unidadesKm, mkbf, mkbfProg, nPM, mttrReal, cantReales };
   }
 
   const indActual = calcIndicadoresMes(mesActualKey, diasTranscurridos, fechaLimiteActual);
@@ -3430,7 +3449,7 @@ function renderDashboard(c) {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.04em;margin-bottom:8px;">MKBF programado</div>
       <div style="font-size:24px;font-weight:800;color:var(--text);line-height:1.1;">${indActual.mkbfProg!==null ? Math.round(indActual.mkbfProg).toLocaleString('es-AR') : '—'}<span style="font-size:13px;font-weight:600;color:var(--text3);"> km</span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre mantenimientos programados${indActual.eProg>0 ? ` (${indActual.eProg} evento${indActual.eProg!==1?'s':''})` : ' — sin programados este mes'}</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;">Km medios entre PM realizados${indActual.nPM>0 ? ` (${indActual.nPM} PM en unidades con lectura de km)` : ' — sin PM realizados este mes en unidades con lectura de km'}</div>
       ${comp('Mes anterior', indAnterior.mkbfProg!==null ? Math.round(indAnterior.mkbfProg).toLocaleString('es-AR')+' km' : '—')}
     </div>
   </div>
@@ -3631,8 +3650,8 @@ function renderDashboard(c) {
   // duplicar lo que ya está en los rosters.
   const SISTEMAS_REP = [
     {cod:'02', nombre:'MOTOR', re:/turbo|inyect|sensor map|baja potencia|potencia|refriger|radiador|combustible|dpf|escape|distribuc|correa|bujia|calentad|\bmotor\b/},
-    {cod:'03', nombre:'EMBRAGUE', re:/(?!)/},  // los trabajos de embrague se cuentan en 04-CAJA DE CAMBIOS
-    {cod:'04', nombre:'CAJA DE CAMBIOS', re:/caja de cambio|caja de velocidad|caja automatica|embrague|clutch/},
+    {cod:'03', nombre:'EMBRAGUE', re:/embrague|clutch/},
+    {cod:'04', nombre:'CAJA DE CAMBIOS', re:/caja de cambio|caja de velocidad|caja automatica/},
     {cod:'05', nombre:'TRANSMISION', re:/transmision|cardan|diferencial|\bdoble\b|semi ?eje|palier|traccion|4x4|reductora|transfer/},
     {cod:'06', nombre:'EJE DELANTERO /DIRECCION /CUBOS/RUEDAS', re:/direccion|eje delantero|cubo|rueda|neumatic|cubierta|rulem|rodamiento|\bbba\b|cremallera|rotula|alineacion|balanceo/},
     {cod:'07', nombre:'FRENO', re:/freno|pastilla|zapata|campana|pinza/},
