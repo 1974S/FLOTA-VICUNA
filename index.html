@@ -924,7 +924,7 @@ const FLOTA_VICUNA = [
   {patente:"AI414AZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v58';
+const APP_VERSION = 'v60';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -2572,10 +2572,54 @@ function corregirFechasOT2020(){
 /* ---------- Generador de presupuestos (PDF, formato Freddy El Taller) ---------- */
 let presItems = [];
 
+// Repuestos facturados en OT en los últimos 30 días: se prefieren sobre la lista de
+// precios fija porque reflejan lo que se facturó de verdad. El precio de la OT es el
+// total de esa línea (cantidad × precio unitario), así que se divide por la cantidad.
+// Algunas OT traen el número de serie/lote pegado al final de la descripción del
+// repuesto (ej. "FILTRO ACEITE IMV 05/.. 10363197"). Se saca para poder comparar
+// contra la lista de precios y contra sí mismo entre distintas OT.
+function limpiarDescRepuesto(desc){
+  return (desc||'').replace(/\s+\d{5,}\s*$/, '').trim();
+}
+
+function repuestosFacturadosRecientes(){
+  const hoy = new Date();
+  // Se toma lo más antiguo entre "hace 30 días" y el día 1 del mes en curso, así
+  // entran tanto los últimos 30 días corridos como todo el mes en curso completo.
+  const hace30 = new Date(hoy.getTime() - 30*24*3600*1000);
+  const desde1roDelMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  const desdeISO = (hace30 < desde1roDelMes ? hace30 : desde1roDelMes).toISOString().slice(0,10);
+  const mapa = {};
+  Object.values(otData||{}).forEach(arr=>(arr||[]).forEach(o=>{
+    if (!o.fecha_iso || o.fecha_iso < desdeISO || o.tipo==='Venta') return;
+    (o.repuestos||[]).forEach(r=>{
+      const desc = limpiarDescRepuesto(r.desc);
+      if (!desc || !r.pesos) return;
+      const precioUnit = r.pesos / (r.cant || 1);
+      const actual = mapa[desc];
+      if (!actual || o.fecha_iso > actual.fecha) mapa[desc] = { desc, precio: precioUnit, fecha: o.fecha_iso };
+    });
+  }));
+  return mapa;
+}
+
+// Precio de un repuesto para presupuesto/remito: primero lo facturado reciente,
+// después la lista de precios como respaldo.
+function buscarPrecioRepuesto(desc){
+  const rec = repuestosFacturadosRecientes()[desc];
+  if (rec) return { precio: rec.precio, fuente: 'reciente', fecha: rec.fecha };
+  const r = repuestosData.find(x => x.desc === desc || x.desc === limpiarDescRepuesto(desc));
+  if (r) return { precio: r.precio, fuente: 'catalogo' };
+  return null;
+}
+
 function initRepDatalist(){
   const dl = document.getElementById('repList');
   if (!dl) return;
-  dl.innerHTML = repuestosData.map(r => `<option value="${String(r.desc).replace(/"/g,'&quot;')}">`).join('');
+  const recientes = Object.keys(repuestosFacturadosRecientes());
+  const catalogo = repuestosData.map(r => r.desc);
+  const todos = Array.from(new Set([...recientes, ...catalogo]));
+  dl.innerHTML = todos.map(d => `<option value="${String(d).replace(/"/g,'&quot;')}">`).join('');
 }
 
 function onPresDomInput(val){
@@ -2611,6 +2655,7 @@ function openPresupuestoModal(){
       </div>
 
       <label class="fl" style="display:block;margin:14px 0 6px;">Ítems (repuestos y mano de obra)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Al elegir un repuesto, el precio se completa con lo facturado en OT de los últimos 30 días; si no hay, usa la lista de precios.</div>
       <div id="presItemsBox"></div>
       <button onclick="addPresItem()" style="width:100%;padding:9px;border-radius:10px;border:1.5px dashed var(--border);background:none;color:var(--text2);font-weight:600;font-size:13px;margin-top:4px;">+ Agregar ítem</button>
 
@@ -2630,13 +2675,16 @@ function renderPresItems(){
   if (!box) return;
   let html = '';
   presItems.forEach((it, i) => {
+    const tag = it.precioFuente==='reciente' ? '<div style="font-size:10px;color:#34C759;margin:-4px 0 6px 2px;">● precio de OT facturada hace poco</div>'
+              : it.precioFuente==='catalogo' ? '<div style="font-size:10px;color:var(--text3);margin:-4px 0 6px 2px;">● precio de lista (sin facturación reciente)</div>' : '';
     html += `
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+      <div style="margin-bottom:2px;">
+      <div style="display:flex;gap:6px;align-items:center;">
         <input class="fi" list="repList" placeholder="Descripción" value="${String(it.desc).replace(/"/g,'&quot;')}" oninput="updatePresItem(${i},'desc',this.value)" style="flex:3;font-size:12.5px;">
         <input class="fi" type="number" min="0" value="${it.cant}" oninput="updatePresItem(${i},'cant',this.value)" style="flex:1;font-size:12.5px;text-align:center;">
         <input class="fi" type="number" min="0" step="0.01" value="${it.precio}" oninput="updatePresItem(${i},'precio',this.value)" style="flex:1.4;font-size:12.5px;text-align:right;">
         <button onclick="removePresItem(${i})" style="background:none;border:none;color:var(--red);font-size:18px;font-weight:700;padding:0 2px;">✕</button>
-      </div>`;
+      </div>${tag}</div>`;
   });
   box.innerHTML = html;
   updatePresTotalPreview();
@@ -2655,8 +2703,8 @@ function removePresItem(i){
 function updatePresItem(i, campo, val){
   if (campo === 'desc') {
     presItems[i].desc = val;
-    const r = repuestosData.find(x => x.desc === val);
-    if (r) { presItems[i].precio = r.precio; renderPresItems(); return; } // autocompleta precio del catálogo
+    const enc = buscarPrecioRepuesto(val);
+    if (enc) { presItems[i].precio = Math.round(enc.precio*100)/100; presItems[i].precioFuente = enc.fuente; renderPresItems(); return; }
   } else {
     presItems[i][campo] = parseFloat(val) || 0;
   }
@@ -2837,6 +2885,7 @@ function openRemitoModal(){
       <div class="fg"><label class="fl">Cotización dólar estadounidense (venta, $)</label><input class="fi" type="number" id="rCotizacion" step="0.01" placeholder="Ej: 1511.50" oninput="updateRemTotalPreview()"></div>
 
       <label class="fl" style="display:block;margin:14px 0 6px;">Ítems (repuestos y mano de obra)</label>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Al elegir un repuesto, el precio se completa con lo facturado en OT de los últimos 30 días; si no hay, usa la lista de precios.</div>
       <div id="remItemsBox"></div>
       <button onclick="addRemItem()" style="width:100%;padding:9px;border-radius:10px;border:1.5px dashed var(--border);background:none;color:var(--text2);font-weight:600;font-size:13px;margin-top:4px;">+ Agregar ítem</button>
 
@@ -2857,13 +2906,16 @@ function renderRemItems(){
   if (!box) return;
   let html = '';
   remItems.forEach((it, i) => {
+    const tag = it.precioFuente==='reciente' ? '<div style="font-size:10px;color:#34C759;margin:-4px 0 6px 2px;">● precio de OT facturada hace poco</div>'
+              : it.precioFuente==='catalogo' ? '<div style="font-size:10px;color:var(--text3);margin:-4px 0 6px 2px;">● precio de lista (sin facturación reciente)</div>' : '';
     html += `
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+      <div style="margin-bottom:2px;">
+      <div style="display:flex;gap:6px;align-items:center;">
         <input class="fi" list="repList" placeholder="Descripción" value="${String(it.desc).replace(/"/g,'&quot;')}" oninput="updateRemItem(${i},'desc',this.value)" style="flex:3;font-size:12.5px;">
         <input class="fi" type="number" min="0" value="${it.cant}" oninput="updateRemItem(${i},'cant',this.value)" style="flex:1;font-size:12.5px;text-align:center;">
         <input class="fi" type="number" min="0" step="0.01" value="${it.precio}" oninput="updateRemItem(${i},'precio',this.value)" style="flex:1.4;font-size:12.5px;text-align:right;">
         <button onclick="removeRemItem(${i})" style="background:none;border:none;color:var(--red);font-size:18px;font-weight:700;padding:0 2px;">✕</button>
-      </div>`;
+      </div>${tag}</div>`;
   });
   box.innerHTML = html;
   updateRemTotalPreview();
@@ -2882,8 +2934,8 @@ function removeRemItem(i){
 function updateRemItem(i, campo, val){
   if (campo === 'desc') {
     remItems[i].desc = val;
-    const r = repuestosData.find(x => x.desc === val);
-    if (r) { remItems[i].precio = r.precio; renderRemItems(); return; }
+    const enc = buscarPrecioRepuesto(val);
+    if (enc) { remItems[i].precio = Math.round(enc.precio*100)/100; remItems[i].precioFuente = enc.fuente; renderRemItems(); return; }
   } else {
     remItems[i][campo] = parseFloat(val) || 0;
   }
