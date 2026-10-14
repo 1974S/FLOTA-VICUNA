@@ -925,7 +925,7 @@ const FLOTA_VICUNA = [
   {patente:"AI414AZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v63';
+const APP_VERSION = 'v64';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1355,7 +1355,7 @@ function renderPlan(c) {
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <label style="flex:1;padding:9px;border-radius:10px;border:1.5px dashed var(--border);background:var(--card);color:var(--text2);font-weight:600;font-size:12px;text-align:center;cursor:pointer;">
         📂 Importar lista de repuestos (Excel)
-        <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importRepuestos(event)">
+        <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importRepuestos(event)">
       </label>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
@@ -1517,33 +1517,107 @@ function saveTask(id, n) {
   closeTaskModal();
 }
 
+// Lector flexible de la lista de precios de repuestos (Excel / CSV).
+// - Busca la fila de encabezados en las primeras 40 filas (puede haber títulos arriba)
+// - Acepta tildes, mayúsculas/minúsculas y nombres alternativos de columna
+// - Prueba todas las hojas del archivo hasta encontrar una con datos
+// - Interpreta precios como número, "$ 16.702,36", "16702.36", "USD 45", etc.
+function _normHdr(x){ return String(x==null?'':x).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); }
+function _parsePrecio(v){
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  let t = String(v==null?'':v).replace(/[^\d.,\-]/g,'');
+  if (!t || t === '-' ) return 0;
+  const lc = t.lastIndexOf(','), ld = t.lastIndexOf('.');
+  if (lc >= 0 && ld >= 0) {                       // tiene ambos: el último es el decimal
+    if (lc > ld) t = t.replace(/\./g,'').replace(',','.');
+    else t = t.replace(/,/g,'');
+  } else if (lc >= 0) {                           // solo coma: miles (1,234 / 1,234,567) o decimal (16702,36)
+    t = /^\d{1,3}(,\d{3})+$/.test(t) ? t.replace(/,/g,'') : t.replace(',','.');
+  } else if (ld >= 0) {                           // solo punto: ¿miles o decimal?
+    const partes = t.split('.');
+    if (partes.length > 2 || (partes.length === 2 && /^\d{3}$/.test(partes[1]) && partes[0].length <= 3 && partes[0] !== '0')) t = t.replace(/\./g,'');
+  }
+  const n = parseFloat(t); return isFinite(n) ? n : 0;
+}
+function _leerListaRepuestos(wb){
+  for (const nombre of wb.SheetNames) {
+    const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, defval: '', raw: true });
+    let hIdx = -1, cols = null;
+    for (let i = 0; i < Math.min(filas.length, 40); i++) {
+      const h = filas[i].map(_normHdr);
+      const iDesc = h.findIndex(x => /^(descripcion|descrip|detalle|material|texto breve|articulo|producto|repuesto)\b/.test(x) || x.includes('descripcion'));
+      // si hay varias columnas de precio se toma la última (la lista más nueva); se informa al usuario
+      let iPrecio = -1; h.forEach((x,k) => { if (/(precio|price|importe|valor|costo)/.test(x)) iPrecio = k; });
+      if (iDesc >= 0 && iPrecio >= 0 && iDesc !== iPrecio) {
+        const buscar = (re) => h.findIndex(x => re.test(x));
+        cols = { desc: iDesc, precio: iPrecio,
+                 item: buscar(/^(item|n item|nro item|id|n|nro|numero|codigo item)$/),
+                 sap: buscar(/\bsap\b/),
+                 fab: buscar(/(fabric|fab\b|part number|p n fab)/),
+                 hdr: filas[i] };
+        hIdx = i; break;
+      }
+    }
+    if (hIdx < 0) continue;
+    const out = [];
+    for (let i = hIdx + 1; i < filas.length; i++) {
+      const f = filas[i];
+      const desc = String(f[cols.desc] == null ? '' : f[cols.desc]).trim();
+      const precio = _parsePrecio(f[cols.precio]);
+      if (!desc || !(precio > 0)) continue;
+      out.push({
+        itemRaw: cols.item >= 0 ? String(f[cols.item] == null ? '' : f[cols.item]).trim() : '',
+        pnSap: cols.sap >= 0 ? String(f[cols.sap] == null ? '' : f[cols.sap]).trim() : '',
+        pnFab: cols.fab >= 0 ? String(f[cols.fab] == null ? '' : f[cols.fab]).trim() : '',
+        desc, precio
+      });
+    }
+    if (out.length) return { hoja: nombre, fila: hIdx + 1, cols, filas: out };
+  }
+  return null;
+}
 function importRepuestos(event) {
-  const file = event.target.files[0];
+  const input = event.target;
+  const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
       const wb = XLSX.read(e.target.result, { type: 'binary' });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      const nuevos = rows
-        .filter(r => r['DESCRIPCION'] && r['PRECIO'])
-        .map(r => ({
-          id: String(r['ITEM'] || ''),
-          pnSap: String(r['PN SAP'] || ''),
-          pnFab: String(r['PN FABRICANTE'] || ''),
-          desc: String(r['DESCRIPCION'] || '').trim(),
-          precio: parseFloat(r['PRECIO']) || 0
-        }));
-      if (!nuevos.length) { alert('No se encontraron filas válidas. Verificá las columnas: ITEM, PN SAP, PN FABRICANTE, DESCRIPCION, PRECIO'); return; }
+      const res = _leerListaRepuestos(wb);
+      if (!res) {
+        alert('No se encontraron filas válidas.\n\nEl archivo necesita una fila de encabezados con una columna de DESCRIPCION y otra de PRECIO (opcionales: ITEM, PN SAP, PN FABRICANTE), y filas con descripción y precio mayor a cero.\n\nHojas leídas: ' + wb.SheetNames.join(', '));
+        return;
+      }
+      // ids: se respeta ITEM; si falta, se conserva el id del repuesto existente (mismo PN SAP o misma descripción)
+      const usados = new Set();
+      const nuevos = res.filas.map((r, idx) => {
+        let id = r.itemRaw;
+        if (!id) {
+          const prev = repuestosData.find(x => (r.pnSap && x.pnSap === r.pnSap) || (x.desc || '').toLowerCase() === r.desc.toLowerCase());
+          id = prev ? String(prev.id) : '';
+        }
+        id = String(id || ('R' + String(idx + 1).padStart(3, '0'))).replace(/[.#$\[\]\/]/g, '_');
+        while (usados.has(id)) id += '_';
+        usados.add(id);
+        return { id, pnSap: r.pnSap, pnFab: r.pnFab, desc: r.desc, precio: r.precio };
+      });
+      const nomCol = (k) => k >= 0 ? '«' + String(res.cols.hdr[k]).trim() + '»' : '(no encontrada)';
+      const ej = nuevos.slice(0, 3).map(r => '• ' + r.desc.slice(0, 38) + ' — ' + r.precio.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})).join('\n');
+      const msg = 'Se leyeron ' + nuevos.length + ' repuestos (hoja «' + res.hoja + '», encabezados en la fila ' + res.fila + ').\n\n' +
+        'Descripción: ' + nomCol(res.cols.desc) + '\nPrecio: ' + nomCol(res.cols.precio) + '\nITEM: ' + nomCol(res.cols.item) + '\n\n' + ej +
+        '\n\nEsto REEMPLAZA la lista actual (' + repuestosData.length + ' repuestos). ¿Continuar?';
+      if (!confirm(msg)) return;
       repuestosData = nuevos;
       const obj = {};
       nuevos.forEach(r => { obj[r.id] = r; });
       refRepuestos.set(obj);
-      alert(`Lista actualizada: ${nuevos.length} repuestos cargados.`);
+      alert('Lista actualizada: ' + nuevos.length + ' repuestos cargados.');
+      try { render(); } catch(e2) {}
     } catch (err) {
-      alert('Error al leer el archivo. Verificá que sea un Excel válido.');
-    }
+      console.error(err);
+      alert('Error al leer el archivo. Verificá que sea un Excel válido (.xlsx / .xls / .csv).');
+    } finally { try { input.value = ''; } catch(e3){} }
   };
   reader.readAsBinaryString(file);
 }
