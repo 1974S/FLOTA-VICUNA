@@ -925,7 +925,7 @@ const FLOTA_VICUNA = [
   {patente:"AI414AZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v62';
+const APP_VERSION = 'v63';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1100,6 +1100,7 @@ function renderTurnos(c) {
       <button onclick="convertirPredictivosAInsp()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir Predictivo → Inspección mensual</button>
       <button onclick="convertirPM10aPM5()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir PM 10.000 km → PM 5.000 km</button>
       <button onclick="corregirFechasOT2020()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🛠️ Corregir OT importadas con fecha en 2020</button>
+      <button onclick="limpiarDuplicadosOT()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🧹 Eliminar órdenes de trabajo duplicadas</button>
       <button onclick="openPresupuestoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💰 Generar presupuesto</button>
       <button onclick="openRemitoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📦 Generar remito</button>
       <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
@@ -2068,12 +2069,107 @@ function otBindFirebase(){
   try {
     whenAuthReady(()=> db.ref('ordenes_trabajo').on('value', snap => {
       const v = snap.val();
-      if(v){ otData = v; otSaveLocal(); if(curTab==='inicio'||curTab==='flota') render(); }
+      if(v){ otData = v; otSaveLocal(); otAutoLimpiar(); if(curTab==='inicio'||curTab==='flota') render(); }
     }));
   } catch(e){ console.warn('OT firebase', e); }
 }
 function otPushFirebase(){
   try { db.ref('ordenes_trabajo').set(otData); } catch(e){ console.warn(e); }
+}
+
+/* ---------- Duplicados de OT ---------- */
+// Clave de identidad de una OT: patente + nro + km + total. No usa la fecha ni el id
+// (la fecha puede venir como 11/08/26 o 11/08/2026, o haber sido corregida de 2020 a 2026).
+function otClave(o, patente){
+  const pat = String(patente || o.patente || '').trim().toUpperCase();
+  const nro = String(o.nro || '').trim();
+  const tot = Math.round((o.total_usd || 0) * 100);
+  const km  = o.km_efectivo || 0;
+  if (nro) return pat + '|N' + nro + '|' + km + '|' + tot;
+  const md = (o.fecha_iso || '').slice(5); // mes-día, sin año
+  return pat + '|F' + md + '|' + km + '|' + tot;
+}
+function otPuntaje(o){
+  let n = (o.trabajos||[]).length + (o.repuestos||[]).length;
+  if (o.fecha_iso && !o.fecha_iso.startsWith('2020-')) n += 100; // prefiere la de fecha correcta
+  if (o.fecha && /\d{2}\/\d{2}\/\d{4}/.test(o.fecha)) n += 1;
+  return n;
+}
+// Quita duplicados en otData y en los turnos generados por OT. Devuelve un resumen.
+// aplicar=false solo cuenta (para mostrar la confirmación).
+function otLimpiarDuplicados(aplicar){
+  const res = { ot: 0, turnos: 0, detalle: [] };
+  const remap = {}; // id eliminado -> id que se conserva
+  Object.keys(otData || {}).forEach(pat => {
+    const arr = otData[pat] || [];
+    const mejor = {};
+    arr.forEach(o => {
+      const k = otClave(o, pat);
+      if (!mejor[k] || otPuntaje(o) > otPuntaje(mejor[k])) mejor[k] = o;
+    });
+    const nuevos = [], vistos = new Set();
+    arr.forEach(o => {
+      const k = otClave(o, pat);
+      if (mejor[k] === o && !vistos.has(k)) { vistos.add(k); nuevos.push(o); }
+      else {
+        res.ot++; res.detalle.push(pat + ' · OT ' + (o.nro||'?') + ' · ' + (o.fecha||''));
+        if (o.id && mejor[k].id) remap[o.id] = mejor[k].id;
+      }
+    });
+    if (aplicar) otData[pat] = nuevos;
+  });
+
+  // Turnos del calendario generados desde OT: uno solo por OT
+  const porOT = {}, borrar = [];
+  (events || []).filter(e => e.origenOT).forEach(e => {
+    const idOT = remap[e.origenOT] || e.origenOT;
+    // clave: OT conservada (o, si el id es viejo, unidad + fecha + km + obs)
+    const k = idOT + '|' + e.dom + '|' + (e.kmU||0) + '|' + (e.obs||'');
+    if (porOT[k]) {
+      const a = porOT[k];
+      // se conserva el que tiene fecha correcta (no 2020)
+      if (String(a.fecha).startsWith('2020-') && !String(e.fecha).startsWith('2020-')) { borrar.push(a); porOT[k] = e; }
+      else borrar.push(e);
+    } else porOT[k] = e;
+  });
+  res.turnos = borrar.length;
+  if (aplicar) {
+    if (borrar.length) {
+      const ids = new Set(borrar.map(e => e.id));
+      events = events.filter(e => !ids.has(e.id));
+      borrar.forEach(e => { try { deleteFirebase(e.id); } catch(err){} });
+      saveLS();
+    }
+    // reapuntar los turnos que referenciaban una OT eliminada
+    let tocados = 0;
+    events.forEach(e => { if (e.origenOT && remap[e.origenOT]) { e.origenOT = remap[e.origenOT]; tocados++; try{ saveFirebase(e); }catch(err){} } });
+    if (tocados) saveLS();
+    if (res.ot) { otSaveLocal(); otPushFirebase(); }
+  }
+  return res;
+}
+// Botón del Calendario / Turnos
+function limpiarDuplicadosOT(){
+  const r = otLimpiarDuplicados(false);
+  if (!r.ot && !r.turnos) { alert('No se encontraron órdenes de trabajo duplicadas. ✅'); return; }
+  const lista = r.detalle.slice(0, 15).join('\n') + (r.detalle.length > 15 ? '\n… y ' + (r.detalle.length - 15) + ' más' : '');
+  if (!confirm('Se encontraron duplicados:\n\n• ' + r.ot + ' OT repetida(s) en el historial\n• ' + r.turnos + ' turno(s) repetido(s) en el calendario\n\n' + lista + '\n\nSe conserva una sola copia de cada una (la de fecha correcta). ¿Eliminar los duplicados?')) return;
+  const f = otLimpiarDuplicados(true);
+  render();
+  alert('Listo. Se eliminaron ' + f.ot + ' OT duplicada(s) y ' + f.turnos + ' turno(s) duplicado(s).');
+}
+// Limpieza automática silenciosa (copias exactas) al recibir datos
+function otAutoLimpiar(){
+  try {
+    const r = otLimpiarDuplicados(false);
+    if (r.ot || r.turnos) { otLimpiarDuplicados(true); return true; }
+  } catch(e){ console.warn('auto-limpieza OT', e); }
+  return false;
+}
+// Fecha para mostrar siempre igual (DD/MM/AAAA)
+function otFechaMostrar(o){
+  if (o && o.fecha_iso && /^\d{4}-\d{2}-\d{2}$/.test(o.fecha_iso)) { const [Y,M,D] = o.fecha_iso.split('-'); return D+'/'+M+'/'+Y; }
+  return (o && o.fecha) || '';
 }
 
 /* ---------- Utilidades ---------- */
@@ -2568,7 +2664,11 @@ function corregirFechasOT2020(){
   otAfectadas.forEach(({o}) => {
     o.fecha_iso = o.fecha_iso.replace(/^2020-/, '2026-');
     const [Y,M,D] = o.fecha_iso.split('-');
-    o.fecha = `${D}/${M}/${Y.slice(2)}`; // mantiene el mismo formato corto que usa el resto de la app
+    o.fecha = `${D}/${M}/${Y}`;
+    // el id lleva la fecha: se actualiza también para que un reimport del mismo PDF no cree otra OT
+    const idViejo = o.id;
+    o.id = (o.nro?('OT'+o.nro):'')+'_'+(o.patente||'SP')+'_'+o.fecha_iso;
+    events.forEach(e => { if (e.origenOT === idViejo) { e.origenOT = o.id; saveFirebase(e); } });
   });
   if (otAfectadas.length) { otPushFirebase(); otSaveLocal(); }
 
@@ -3176,14 +3276,18 @@ function otRenderPreview(){
 function otConfirmImport(){
   const ok = otPreview.filter(o=>!o.ERROR && o.patente);
   const nuevosTurnos = [];
+  let omitidas = 0;
   ok.forEach(o=>{
     const p=o.patente;
     otData[p]=otData[p]||[];
-    // evitar duplicado por id
-    if(!otData[p].some(x=>x.id===o.id)) otData[p].push(o);
+    // evitar duplicado por id o por identidad (patente+nro+km+total, sin depender de la fecha)
+    const kNew = otClave(o,p);
+    const yaEsta = otData[p].find(x=> x.id===o.id || otClave(x,p)===kNew);
+    if(yaEsta){ omitidas++; o = yaEsta; }
+    else otData[p].push(o);
     // generar turno en el calendario si tiene fecha
     if(o.fecha_iso){
-      const existe = events.some(e=>e.origenOT===o.id);
+      const existe = events.some(e=>e.origenOT===o.id || (e.origenOT && e.dom===p && (e.kmU||0)===(o.km_efectivo||0) && (e.obs||'')==='Generado desde OT '+(o.nro||'')));
       if(!existe){
         const veh = (FLOTA_VICUNA.find(v=>v.patente===p)||{}).vehiculo || o.modelo || '';
         const km = o.km_efectivo||0;
@@ -3217,6 +3321,7 @@ function otConfirmImport(){
   } catch(e){ console.warn('guardar turnos OT', e); }
   document.getElementById('importModal')?.remove();
   render();
+  if(omitidas) alert('Se omitieron '+omitidas+' OT que ya estaban cargadas (duplicadas).');
 }
 
 /* ---------- Historial por unidad ---------- */
@@ -3245,7 +3350,7 @@ function otHistorial(patente){
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
             <span style="background:${tipoColor}20;color:${tipoColor};border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">${o.tipo}</span>
             <span style="font-size:13px;font-weight:600;">${(o.km_efectivo||0).toLocaleString('es-AR')} km</span>
-            <span style="font-size:11px;color:var(--text3);margin-left:auto;">${o.fecha||''} · OT ${o.nro||''}</span>
+            <span style="font-size:11px;color:var(--text3);margin-left:auto;">${otFechaMostrar(o)} · OT ${o.nro||''}</span>
           </div>
           ${reps}${trabs}
           <div style="font-size:12px;font-weight:700;text-align:right;margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">Total: USD ${(o.total_usd||0).toLocaleString('es-AR')}</div>
@@ -3344,7 +3449,7 @@ function otSanearTurnos(){
 otLoadLocal();
 otBindFirebase();
 // sanear turnos OT viejos una vez que events esté disponible
-setTimeout(()=>{ if(otSanearTurnos()) { try{ render(); }catch(e){} } }, 1500);
+setTimeout(()=>{ let c=otSanearTurnos(); if(otAutoLimpiar()) c=true; if(c) { try{ render(); }catch(e){} } }, 2500);
 // red de seguridad: si Plan PM no cargó tras 3s, cargar default para no quedar colgado
 setTimeout(()=>{
   try {
