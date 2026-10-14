@@ -924,7 +924,7 @@ const FLOTA_VICUNA = [
   {patente:"AI414AZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v60';
+const APP_VERSION = 'v61';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1319,6 +1319,14 @@ whenAuthReady(()=> db.ref('reparaciones_reales').on('value', snap => {
 let rostersMeta = {};
 whenAuthReady(()=> db.ref('rosters_meta').on('value', snap => {
   rostersMeta = snap.val() || {};
+  if (curTab === 'dashboard') render();
+}));
+
+// Informe de seguimiento del contrato (indicador 4): checklist mensual cargado a mano
+let kpiSeg = {};
+let kpiMesSel = null;
+whenAuthReady(()=> db.ref('kpi_seguimiento').on('value', snap => {
+  kpiSeg = snap.val() || {};
   if (curTab === 'dashboard') render();
 }));
 
@@ -3888,6 +3896,8 @@ function renderDashboard(c) {
   window.__dash = { calcIndicadoresMes, contarLugarMes, contarCategoriasMes, clasificarLugarOT, sistemaDeTextos, subDeCategoria,
                     CATEGORIAS_INT, mesesEvol, mesActualKey, mttrFijo: HORAS_DETENCION.CORR };
 
+  html += kpiContratoHTML(window.__dash);
+
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
   html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
   html += `<button onclick="openInformeCompleto()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--red);font-weight:700;font-size:14px;margin-bottom:14px;">📊 Informe completo de indicadores (PDF / Word)</button>`;
@@ -4726,6 +4736,310 @@ async function generarPlanillaKPI(){
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url), 2000);
     alert('Planilla generada con el formato original.\n\nCompletado desde julio (inicio del contrato):\n\n' + resumen.join('\n'));
   } catch(e){ console.error(e); alert('No se pudo generar la planilla: ' + e.message); }
+}
+
+
+/* =====================================================================
+   KPI DEL CONTRATO — 6 indicadores contractuales vs. sus metas
+   Pantalla (Dashboard) + informe mensual en Word. Desde julio 2026.
+   ===================================================================== */
+function kpiInicio(){ return '2026-07'; }
+
+// Metas del contrato (si cambian, se tocan acá)
+function kpiMetasDef(){
+  return {
+    disp:    { texto:'≥ 90%',     ok: v => v >= 0.90 },
+    hh:      { texto:'≥ 95%',     ok: v => v >= 0.95 },
+    equipos: { texto:'≥ 90%',     ok: v => v >= 0.90 },
+    seg:     { texto:'100%',      ok: v => v >= 1 },
+    mtbf:    { texto:'> 2.500 km', ok: v => v > 2500 },
+    mttr:    { texto:'< 100 hs',  ok: v => v < 100 }
+  };
+}
+
+// Los 5 ítems del indicador 4 (Informe de seguimiento). "meses" = solo aplica en esos meses.
+function kpiSegItems(){
+  return [
+    { id:'diario_semanal', nombre:'Informe diario y semanal' },
+    { id:'tecnicos',       nombre:'Informes técnicos' },
+    { id:'consumibles',    nombre:'Informe mensual de consumibles con respaldo de OT' },
+    { id:'trimestral',     nombre:'Informe trimestral de mantenimiento', meses:[3,6,9,12] },
+    { id:'performance',    nombre:'Informe mensual de performance KPIs' }
+  ];
+}
+
+function kpiEstadoInfo(e){
+  return ({
+    ok:   { txt:'Cumple',     color:'#2e9e5b', icono:'✅' },
+    no:   { txt:'No cumple',  color:'#d93025', icono:'❌' },
+    pend: { txt:'En curso',   color:'#e0a100', icono:'🟡' },
+    sd:   { txt:'Sin datos',  color:'#8a8a8a', icono:'➖' }
+  })[e] || { txt:'Sin datos', color:'#8a8a8a', icono:'➖' };
+}
+
+// Devuelve las 6 filas del mes: {n, nombre, meta, valor, estado, detalle}
+function kpiContratoMes(D, m){
+  const v = kpiValoresMes(D, m), ind = m.ind, M = kpiMetasDef();
+  const nfmt = (x, dec) => x.toLocaleString('es-AR', {maximumFractionDigits: dec||0});
+  const pc = x => (x===null || x===undefined) ? 'Sin datos' : (Math.round(x*1000)/10).toLocaleString('es-AR',{minimumFractionDigits:1, maximumFractionDigits:1}) + '%';
+  const est = (x, regla) => (x===null || x===undefined) ? 'sd' : (regla(x) ? 'ok' : 'no');
+  const mesNum = parseInt(m.key.slice(5,7));
+
+  // 4.- Informe de seguimiento (checklist manual)
+  const items = kpiSegItems().filter(i => !i.meses || i.meses.indexOf(mesNum) >= 0);
+  const marcas = (typeof kpiSeg !== 'undefined' && kpiSeg && kpiSeg[m.key]) || {};
+  const hechos = items.filter(i => marcas[i.id]).length;
+  const segPct = items.length ? hechos / items.length : null;
+  let segEstado;
+  if (segPct === 1) segEstado = 'ok';
+  else if (m.esActual) segEstado = 'pend';
+  else segEstado = hechos === 0 ? 'sd' : 'no';
+
+  // 6.- MTTR: promedio real si hay reparaciones cargadas en rosters; si no, la hora fija estimada
+  const mttrVal = v.mttr !== null ? v.mttr : D.mttrFijo;
+
+  // 5.- MTBF
+  let mtbfValor, mtbfEstado;
+  if (v.mtbf !== null) { mtbfValor = nfmt(v.mtbf) + ' km'; mtbfEstado = est(v.mtbf, M.mtbf.ok); }
+  else if (ind.eImprev === 0 && ind.kmRec > 0) { mtbfValor = 'Sin fallas'; mtbfEstado = 'ok'; }
+  else { mtbfValor = 'Sin datos'; mtbfEstado = 'sd'; }
+
+  return [
+    { n:1, nombre:'Disponibilidad física', meta:M.disp.texto, valor: pc(v.disp), estado: est(v.disp, M.disp.ok),
+      detalle: `${ind.hTotal} hs de detención sobre ${nfmt(ind.hDisp)} hs disponibles de la flota (${ind.hProg} hs en ${ind.eProg} intervenciones programadas y ${ind.hImprev} hs en ${ind.eImprev} imprevistas).` },
+    { n:2, nombre:'Cumplimiento del programa de mantenimiento preventivo (HH efectivas / HH programadas)', meta:M.hh.texto, valor: pc(v.hh), estado: est(v.hh, M.hh.ok),
+      detalle: v.hhDisp > 0 ? `${nfmt(v.hhCons,1)} hs hombre consumidas sobre ${nfmt(v.hhDisp)} hs hombre disponibles en los rosters del mes.` : 'No hay rosters cargados este mes.' },
+    { n:3, nombre:'Equipos ejecutados / equipos programados', meta:M.equipos.texto, valor: pc(v.equipos), estado: est(v.equipos, M.equipos.ok),
+      detalle: v.eqProg > 0 ? `${v.eqEjec} de ${v.eqProg} unidades con turno programado (PM, inspección o predictivo) cumplieron su turno.` : 'No hay turnos programados este mes en la agenda.' },
+    { n:4, nombre:'Informe de seguimiento', meta:M.seg.texto, valor: segPct===null ? 'Sin datos' : pc(segPct), estado: segEstado,
+      detalle: `${hechos} de ${items.length} informes entregados.` },
+    { n:5, nombre:'MTBF (km entre fallas)', meta:M.mtbf.texto, valor: mtbfValor, estado: mtbfEstado,
+      detalle: ind.eImprev > 0 ? `${nfmt(ind.kmRec)} km recorridos por las unidades con lectura de km (${ind.unidadesKm}) ÷ ${ind.eImprev} correctivos.` : (ind.kmRec > 0 ? `${nfmt(ind.kmRec)} km recorridos sin correctivos en el mes.` : 'Sin lecturas de km en el mes.') },
+    { n:6, nombre:'MTTR (tiempo medio de reparación)', meta:M.mttr.texto, valor: nfmt(mttrVal, 2) + ' hs' + (v.mttr!==null ? '' : ' (est.)'), estado: est(mttrVal, M.mttr.ok),
+      detalle: v.mttr !== null ? `Promedio real de ${ind.cantReales} reparación${ind.cantReales!==1?'es':''} cargadas en rosters (sin PM).` : `Sin reparaciones reales cargadas este mes: se usa la hora fija estimada (${D.mttrFijo} hs).` }
+  ].map(f => Object.assign(f, { _hechos: hechos, _items: items.length }));
+}
+
+function setKpiMes(v){ kpiMesSel = v; if (curTab === 'dashboard') render(); }
+
+function toggleKpiSeg(mesKey, id){
+  const cur = !!((kpiSeg[mesKey] || {})[id]);
+  const nuevo = Object.assign({}, kpiSeg[mesKey] || {});
+  nuevo[id] = !cur;
+  kpiSeg[mesKey] = nuevo;
+  try { db.ref('kpi_seguimiento/' + mesKey + '/' + id).set(!cur); } catch(e){ console.warn(e); }
+  if (curTab === 'dashboard') render();
+}
+
+// Bloque HTML de la pestaña Dashboard
+function kpiContratoHTML(D){
+  const meses = D.mesesEvol.filter(m => !m.esFuturo && m.ind && m.key >= kpiInicio());
+  let h = `<div class="sec-hdr" style="margin:18px 0 12px;">KPI del contrato</div>`;
+  if (!meses.length) {
+    return h + `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:14px;font-size:13px;color:var(--text2);">Todavía no hay meses con datos desde el inicio del contrato (julio 2026).</div>`;
+  }
+  if (!kpiMesSel || !meses.some(m => m.key === kpiMesSel)) kpiMesSel = meses[meses.length-1].key;
+  const M = meses.find(m => m.key === kpiMesSel);
+  const filas = kpiContratoMes(D, M);
+
+  h += `<select onchange="setKpiMes(this.value)" style="width:100%;padding:11px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-size:14px;margin-bottom:10px;">${
+    meses.map(m => `<option value="${m.key}" ${m.key===kpiMesSel?'selected':''}>${m.nombre} de ${m.key.slice(0,4)}${m.esActual?' (mes en curso)':''}</option>`).join('')}</select>`;
+
+  h += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:4px 14px;margin-bottom:10px;">`;
+  filas.forEach((f, i) => {
+    const e = kpiEstadoInfo(f.estado);
+    h += `<div style="padding:11px 0;${i<filas.length-1?'border-bottom:1px solid var(--border);':''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+        <div style="font-size:12.5px;font-weight:700;color:var(--text);line-height:1.3;">${f.n}. ${f.nombre}</div>
+        <div style="font-size:11px;font-weight:700;color:${e.color};white-space:nowrap;">${e.icono} ${e.txt}</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;">
+        <div style="font-size:22px;font-weight:800;color:var(--text);line-height:1.1;">${f.valor}</div>
+        <div style="font-size:11.5px;color:var(--text3);">Meta: ${f.meta}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.35;">${f.detalle}</div>
+    </div>`;
+  });
+  h += `</div>`;
+
+  // Checklist del indicador 4
+  const mesNum = parseInt(M.key.slice(5,7));
+  const marcas = kpiSeg[M.key] || {};
+  h += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px;">
+    <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:6px;">4. Informe de seguimiento — informes entregados en ${M.nombre}</div>`;
+  kpiSegItems().forEach(it => {
+    const aplica = !it.meses || it.meses.indexOf(mesNum) >= 0;
+    const on = !!marcas[it.id];
+    h += `<label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:12.5px;color:${aplica?'var(--text)':'var(--text3)'};${aplica?'cursor:pointer;':''}">
+      <input type="checkbox" ${on?'checked':''} ${aplica?'':'disabled'} onchange="toggleKpiSeg('${M.key}','${it.id}')" style="width:18px;height:18px;accent-color:var(--red);flex:none;">
+      <span>${it.nombre}${aplica?'':' <em style="color:var(--text3);">(no aplica este mes)</em>'}</span></label>`;
+  });
+  h += `<div style="font-size:11px;color:var(--text3);margin-top:4px;">Tildá cada informe a medida que lo entregás; el indicador no se calcula solo.</div></div>`;
+
+  // Evolución desde julio
+  const th = 'text-align:right;padding:9px 6px;color:var(--text3);font-size:10px;letter-spacing:.03em;';
+  h += `<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:4px 4px 8px;margin-bottom:10px;overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:350px;">
+      <thead><tr style="border-bottom:1.5px solid var(--border);">
+        <th style="text-align:left;padding:9px 6px;color:var(--text3);font-size:10px;">MES</th>
+        <th style="${th}">1 DISP.</th><th style="${th}">2 HH</th><th style="${th}">3 EQ.</th><th style="${th}">4 SEG.</th><th style="${th}">5 MTBF</th><th style="${th}">6 MTTR</th>
+      </tr></thead><tbody>`;
+  meses.forEach(m => {
+    const fs = kpiContratoMes(D, m);
+    h += `<tr style="border-bottom:1px solid var(--border);${m.key===kpiMesSel?'background:rgba(204,0,0,0.08);':''}">
+      <td style="padding:7px 6px;font-weight:600;color:var(--text);white-space:nowrap;">${m.nombre}${m.esActual?' *':''}</td>
+      ${fs.map(f => `<td style="padding:7px 6px;text-align:right;white-space:nowrap;color:${kpiEstadoInfo(f.estado).color};font-weight:600;">${f.valor.replace(' (est.)','*')}</td>`).join('')}
+    </tr>`;
+  });
+  h += `</tbody></table></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Verde = cumple la meta · rojo = no cumple · amarillo = mes en curso · gris = sin datos. * Mes en curso (hasta hoy) / MTTR estimado.</div>
+    <button onclick="generarInformeKPIWord('${kpiMesSel}')" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📘 Informe mensual de KPI — ${M.nombre} (Word)</button>`;
+  return h;
+}
+
+/* ---------- Informe mensual de KPI (Word, formato Freddy) ---------- */
+function generarInformeKPIWord(mesKey){
+  const D = window.__dash;
+  if (!D) { alert('Abrí primero el Dashboard para que se carguen los indicadores.'); return; }
+  const meses = D.mesesEvol.filter(m => !m.esFuturo && m.ind && m.key >= kpiInicio());
+  const M = meses.find(m => m.key === mesKey);
+  if (!M) { alert('No hay datos del mes elegido.'); return; }
+  try {
+    const dx = window.docx;
+    const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, ImageRun, ShadingType, TableLayoutType, VerticalAlign, Footer, PageNumber } = dx;
+    const ANCHO = 10306, RED = 'CC0000', GRIS = 'F2F2F2';
+    const anio = mesKey.slice(0,4);
+    const periodo = M.nombre + ' de ' + anio;
+    const hoy = new Date().toLocaleDateString('es-AR');
+    const filas = kpiContratoMes(D, M);
+    const cumplen = filas.filter(f => f.estado === 'ok').length;
+
+    const run = (text, o={}) => new TextRun({ text:String(text), bold:o.bold, size:o.size||20, color:o.color, italics:o.italics });
+    const P = (text, o={}) => new Paragraph({ alignment:o.align, spacing:{ before:o.before||0, after:o.after!==undefined?o.after:100 }, keepNext:o.keepNext, children:[ run(text, o) ] });
+    const SEC = (n, text) => new Paragraph({ spacing:{ before:300, after:120 }, keepNext:true, children:[ run(n + '. ' + text, { bold:true, size:24 }) ] });
+    const cel = (children, o={}) => new TableCell({
+      width:{ size:o.wd, type:WidthType.DXA }, verticalAlign: VerticalAlign.CENTER, columnSpan:o.span,
+      shading: o.fill ? { fill:o.fill, type:ShadingType.CLEAR, color:'auto' } : undefined,
+      margins:{ top:60, bottom:60, left:100, right:100 },
+      children: Array.isArray(children) ? children : [ new Paragraph({ alignment:o.align, children:[ run(children, { bold:o.bold, size:o.size||19, color:o.color }) ] }) ]
+    });
+    const tabla = (cols, rows) => new Table({ width:{ size:ANCHO, type:WidthType.DXA }, columnWidths:cols, layout:TableLayoutType.FIXED, rows });
+    const colorEstado = e => ({ ok:'2E9E5B', no:'D93025', pend:'B38600', sd:'777777' })[e] || '777777';
+
+    const children = [];
+
+    // --- Encabezado en recuadro: logo | nombre del documento y revisión ---
+    let logo = null;
+    try {
+      const bytes = Uint8Array.from(atob(FREDDY_LOGO.split(',')[1]), c => c.charCodeAt(0));
+      logo = new ImageRun({ data:bytes, transformation:{ width:150, height:62 } });
+    } catch(e){}
+    const w1 = 3300, w2 = ANCHO - w1;
+    children.push(tabla([w1, w2], [ new TableRow({ children:[
+      cel([ new Paragraph({ alignment:AlignmentType.CENTER, children: logo ? [logo] : [ run('FREDDY EL TALLER S.R.L.', { bold:true }) ] }) ], { wd:w1 }),
+      cel([
+        new Paragraph({ alignment:AlignmentType.CENTER, spacing:{ after:40 }, children:[ run('INFORME MENSUAL DE KPI', { bold:true, size:24 }) ] }),
+        new Paragraph({ alignment:AlignmentType.CENTER, spacing:{ after:40 }, children:[ run('Contrato de mantenimiento de camionetas — Proyecto Vicuña', { size:18 }) ] }),
+        new Paragraph({ alignment:AlignmentType.CENTER, children:[ run('Rev. 0 – Borrador para validar', { size:18, color:'777777' }) ] })
+      ], { wd:w2 })
+    ]}) ]));
+
+    // --- Título ---
+    children.push(P('INFORME MENSUAL DE INDICADORES CLAVE (KPI) — ' + periodo.toUpperCase(), { bold:true, size:28, align:AlignmentType.CENTER, before:300, after:200 }));
+
+    // --- Datos generales (2 columnas, etiqueta gris) ---
+    const l1 = 3000, l2 = ANCHO - l1;
+    const dato = (k, v) => new TableRow({ children:[ cel(k, { wd:l1, bold:true, fill:GRIS }), cel(v, { wd:l2 }) ] });
+    children.push(tabla([l1, l2], [
+      dato('Cliente', 'Vicuña Argentina S.A.'),
+      dato('Contratista', 'Freddy El Taller S.R.L.'),
+      dato('Servicio', 'Mantenimiento de camionetas livianas — Proyecto Vicuña'),
+      dato('Período informado', periodo + (M.esActual ? ' (mes en curso, datos hasta el ' + hoy + ')' : '')),
+      dato('Unidades en flota', String(FLOTA_VICUNA.length)),
+      dato('Fecha de emisión', hoy),
+      dato('Indicadores que cumplen', cumplen + ' de ' + filas.length)
+    ]));
+
+    // --- 1. Resumen ---
+    children.push(SEC(1, 'Resumen de cumplimiento'));
+    const cr = [600, 4100, 1500, 2000, ANCHO - 600 - 4100 - 1500 - 2000];
+    children.push(tabla(cr, [
+      new TableRow({ tableHeader:true, children:[ cel('N°',{wd:cr[0],bold:true,fill:GRIS}), cel('Indicador',{wd:cr[1],bold:true,fill:GRIS}), cel('Meta',{wd:cr[2],bold:true,fill:GRIS}), cel('Resultado',{wd:cr[3],bold:true,fill:GRIS,align:AlignmentType.RIGHT}), cel('Estado',{wd:cr[4],bold:true,fill:GRIS}) ] }),
+      ...filas.map(f => new TableRow({ cantSplit:true, children:[
+        cel(String(f.n), {wd:cr[0]}), cel(f.nombre, {wd:cr[1]}), cel(f.meta, {wd:cr[2]}),
+        cel(f.valor, {wd:cr[3], bold:true, align:AlignmentType.RIGHT}),
+        cel(kpiEstadoInfo(f.estado).txt, {wd:cr[4], bold:true, color:colorEstado(f.estado)})
+      ]}))
+    ]));
+
+    // --- 2. Detalle ---
+    children.push(SEC(2, 'Detalle y base de cálculo de cada indicador'));
+    filas.forEach(f => {
+      children.push(P(f.n + '.- ' + f.nombre, { bold:true, after:30, keepNext:true }));
+      children.push(P('Meta: ' + f.meta + '   |   Resultado: ' + f.valor + '   |   ' + kpiEstadoInfo(f.estado).txt, { size:19, color:colorEstado(f.estado), after:30, keepNext:true }));
+      children.push(P(f.detalle, { size:19, color:'444444', after:140 }));
+    });
+
+    // --- 3. Informe de seguimiento ---
+    const mesNum = parseInt(mesKey.slice(5,7));
+    const marcas = kpiSeg[mesKey] || {};
+    children.push(SEC(3, 'Informe de seguimiento (indicador 4)'));
+    const sc = [ANCHO - 2200, 2200];
+    children.push(tabla(sc, [
+      new TableRow({ tableHeader:true, children:[ cel('Informe',{wd:sc[0],bold:true,fill:GRIS}), cel('Estado',{wd:sc[1],bold:true,fill:GRIS}) ] }),
+      ...kpiSegItems().map(it => {
+        const aplica = !it.meses || it.meses.indexOf(mesNum) >= 0;
+        const sinRegistro = !M.esActual && !kpiSegItems().some(x => marcas[x.id]);
+        const txt = !aplica ? 'No aplica este mes' : (marcas[it.id] ? 'Entregado' : (sinRegistro ? 'Sin registrar' : 'Pendiente'));
+        return new TableRow({ cantSplit:true, children:[ cel(it.nombre,{wd:sc[0]}), cel(txt,{wd:sc[1],bold:true,color: (!aplica || sinRegistro) && !marcas[it.id] ? '777777' : (marcas[it.id] ? '2E9E5B' : 'D93025')}) ] });
+      })
+    ]));
+
+    // --- 4. Evolución desde el inicio del contrato ---
+    children.push(SEC(4, 'Evolución desde el inicio del contrato (julio ' + anio + ')'));
+    const ec = [1500, 1400, 1400, 1500, 1500, 1500, ANCHO - 1500 - 1400 - 1400 - 1500*3];
+    const hd = (t, i) => cel(t, { wd:ec[i], bold:true, fill:GRIS, size:17, align: i>0 ? AlignmentType.RIGHT : undefined });
+    children.push(tabla(ec, [
+      new TableRow({ tableHeader:true, children:[ hd('Mes',0), hd('1 Disp.',1), hd('2 HH',2), hd('3 Equipos',3), hd('4 Seguim.',4), hd('5 MTBF',5), hd('6 MTTR',6) ] }),
+      ...meses.map(m => {
+        const fs = kpiContratoMes(D, m);
+        return new TableRow({ cantSplit:true, children:[
+          cel(m.nombre + (m.esActual ? ' *' : ''), { wd:ec[0], size:17, bold: m.key === mesKey }),
+          ...fs.map((f, i) => cel(f.valor.replace(' (est.)','*'), { wd:ec[i+1], size:17, align:AlignmentType.RIGHT, color:colorEstado(f.estado), bold:true }))
+        ]});
+      })
+    ]));
+    children.push(P('Metas del contrato: Disponibilidad ' + fs0('disp') + ' · HH ' + fs0('hh') + ' · Equipos ' + fs0('equipos') + ' · Seguimiento ' + fs0('seg') + ' · MTBF ' + fs0('mtbf') + ' · MTTR ' + fs0('mttr') + '. Verde = cumple, rojo = no cumple, amarillo = en curso, gris = sin datos. * Mes en curso o MTTR estimado.', { size:16, color:'6E6E6E', before:80 }));
+
+    // --- 5. Observaciones ---
+    children.push(SEC(5, 'Observaciones'));
+    const incumplen = filas.filter(f => f.estado === 'no');
+    if (incumplen.length) children.push(P('Indicadores fuera de meta en el período: ' + incumplen.map(f => f.n + '.- ' + f.nombre + ' (' + f.valor + ', meta ' + f.meta + ')').join('; ') + '.', { size:19, after:100 }));
+    children.push(P('Comentarios del contratista: ', { size:19, after:400 }));
+
+    // --- Firmas ---
+    const fw = Math.floor(ANCHO / 3);
+    const firma = t => cel([ new Paragraph({ spacing:{ before:500 }, alignment:AlignmentType.CENTER, children:[ run('______________________', { size:18 }) ] }), new Paragraph({ alignment:AlignmentType.CENTER, children:[ run(t, { size:17, bold:true }) ] }) ], { wd:fw });
+    children.push(tabla([fw, fw, ANCHO - 2*fw], [ new TableRow({ cantSplit:true, children:[ firma('Elaboró'), firma('Revisó'), firma('Aprobó') ] }) ]));
+
+    const doc = new Document({
+      sections:[{
+        properties:{ page:{ margin:{ top:900, bottom:900, left:800, right:800 } } },
+        footers:{ default: new Footer({ children:[ new Paragraph({ alignment:AlignmentType.CENTER, children:[
+          run('Freddy El Taller S.R.L. — Informe mensual de KPI · ' + periodo + ' · Rev. 0 – Borrador para validar · Página ', { size:15, color:'969696' }),
+          new TextRun({ children:[ PageNumber.CURRENT ], size:15, color:'969696' })
+        ] }) ] }) },
+        children
+      }]
+    });
+    Packer.toBlob(doc).then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'Informe_KPI_Vicuna_' + mesKey + '.docx';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+    }).catch(e => { console.error(e); alert('Error al generar el Word: ' + e.message); });
+  } catch(e){ console.error(e); alert('No se pudo generar el informe: ' + e.message); }
+
+  function fs0(k){ return kpiMetasDef()[k].texto; }
 }
 
 
