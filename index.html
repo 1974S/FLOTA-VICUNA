@@ -565,6 +565,12 @@ body {
   color: var(--text3);
   padding: 6px 0 2px;
 }
+/* Solo lectura (Supervisor Vicuña): red de seguridad visual */
+body[data-role="supervisor_vicuna"] .btn-add-nav,
+body[data-role="supervisor_vicuna"] .fab,
+body[data-role="supervisor_vicuna"] #dCerrarBtn,
+body[data-role="supervisor_vicuna"] #dDelBtn,
+body[data-role="supervisor_vicuna"] input[type="file"]{ display:none !important; }
 </style>
 </head>
 <body>
@@ -720,7 +726,7 @@ body {
   <div class="sheet-footer" style="flex-direction:column;">
     <button class="btn-primary" id="dCerrarBtn" onclick="toggleCumplidoEv()" style="width:100%;">Marcar como realizado</button>
     <div style="display:flex;gap:10px;width:100%;">
-      <button class="btn-danger" onclick="delEv()" style="flex:1;">Eliminar</button>
+      <button class="btn-danger" id="dDelBtn" onclick="delEv()" style="flex:1;">Eliminar</button>
       <button class="btn-secondary" onclick="closeDet()" style="flex:1;">Cerrar</button>
     </div>
   </div>
@@ -761,7 +767,22 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
+/* Guardia de escritura: el rol de solo lectura (Supervisor Vicuña) NUNCA puede
+   escribir en Firebase, aunque algún botón o proceso automático lo intente.
+   Cada referencia se envuelve: lectura/escucha pasan normal y las escrituras
+   se descartan en silencio cuando soloLectura() es true. */
+const _dbReal = firebase.database();
+const _DB_WRITE = ['set','update','remove','push','setWithPriority','setPriority','transaction'];
+function _guardRef(r){
+  return new Proxy(r, { get(t, k){
+    const v = t[k];
+    if (typeof v !== 'function') return v;
+    if (_DB_WRITE.indexOf(k) > -1) return function(){ if (soloLectura()) return Promise.resolve(); return v.apply(t, arguments); };
+    if (k === 'child') return function(){ return _guardRef(v.apply(t, arguments)); };
+    return v.bind(t);
+  }});
+}
+const db = { ref: function(p){ return _guardRef(p === undefined ? _dbReal.ref() : _dbReal.ref(p)); } };
 
 // Autenticación anónima — cada dispositivo se loguea solo, sin pedir nada
 // al técnico. Necesaria para que las reglas de la base (auth != null)
@@ -790,17 +811,28 @@ function whenAuthReady(cb){
    mostrar el login. Por eso esto tiene que declararse antes que nada. */
 const PIN_ADMIN = '1974';              // acceso completo
 const PIN_SUPERVISOR = '1984';         // solo turnos
-const PIN_SUPERVISOR_VICUNA = '2026';  // Inicio + Flota + Plan PM, sin costos
+const PIN_SUPERVISOR_VICUNA = '2026';  // Ve TODAS las pestañas, pero solo lectura (no modifica, carga ni descarga)
 let userRole = null;  // 'admin' | 'supervisor' | 'supervisor_vicuna'
 function esAdmin(){ return userRole === 'admin'; }
 function esSupervisor(){ return userRole === 'supervisor'; }
 function esSupervisorVicuna(){ return userRole === 'supervisor_vicuna'; }
-// Ocultar costos: aplica al supervisor de Turnos y al supervisor Vicuña
-function ocultarCostos(){ return esSupervisor() || esSupervisorVicuna(); }
+// Modo solo lectura: el Supervisor Vicuña ve lo mismo que el Admin pero no puede
+// modificar, cargar ni descargar nada.
+function soloLectura(){
+  // Mientras arranca (userRole todavía null) se usa la sesión guardada, así no hay
+  // ventana en la que un dispositivo de solo lectura pueda escribir al abrir la app.
+  if (userRole) return userRole === 'supervisor_vicuna';
+  try { return sessionStorage.getItem('fv_role') === 'supervisor_vicuna'; } catch(e){ return false; }
+}
+// ¿El Supervisor Vicuña ve los costos/importes? (true = igual que el Admin).
+// Si se lo quiere ocultar, cambiar a false.
+const VICUNA_VE_COSTOS = true;
+// Ocultar costos: siempre para el supervisor de Turnos; para Vicuña solo si VICUNA_VE_COSTOS=false
+function ocultarCostos(){ return esSupervisor() || (esSupervisorVicuna() && !VICUNA_VE_COSTOS); }
 // Pestañas visibles por rol — null = todas (admin)
 const TABS_POR_ROL = {
   supervisor: ['turnos'],
-  supervisor_vicuna: ['inicio','flota','plan']
+  supervisor_vicuna: ['inicio','turnos','dashboard','flota','plan']
 };
 function tabPermitida(t){
   const permitidas = TABS_POR_ROL[userRole];
@@ -925,7 +957,7 @@ const FLOTA_VICUNA = [
   {patente:"AI414AZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v64';
+const APP_VERSION = 'v65';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1348,7 +1380,7 @@ function renderPlan(c) {
       <strong style="color:var(--text);">${titulo}</strong> — Plan oficial Freddy El Taller · Proyecto Vicuña<br>
       <span style="font-size:12px;color:var(--text3);">${nota}</span>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
+    ${soloLectura() ? '' : `<div style="display:flex;gap:8px;margin-bottom:12px;">
       <button onclick="toggleEditMode()" style="flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--border);background:${editMode?'var(--red)':'var(--card)'};color:${editMode?'#fff':'var(--text)'};font-weight:600;font-size:12.5px;">${editMode ? '✓ Modo edición activo' : '✏️ Editar tareas'}</button>
       <button onclick="addTask()" style="padding:9px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:12.5px;">+ Tarea</button>
     </div>
@@ -1357,7 +1389,7 @@ function renderPlan(c) {
         📂 Importar lista de repuestos (Excel)
         <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importRepuestos(event)">
       </label>
-    </div>
+    </div>`}
     <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
       <span style="font-size:12.5px;color:var(--text2);">Costo total estimado del PM</span>
       ${(typeof ocultarCostos==='function' && ocultarCostos()) ? '' : `<span style="font-size:16px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>`}
@@ -1370,7 +1402,7 @@ function renderPlan(c) {
     html += `
       <div class="plan-row" style="flex-direction:column;align-items:stretch;gap:6px;padding:12px 14px;">
         <div style="display:flex;align-items:flex-start;gap:10px;">
-          ${editMode ? '' : `<div onclick="toggleTaskDone('${t.id}')" style="width:22px;height:22px;border-radius:50%;border:2px solid ${t.done?'#34C759':'var(--border)'};background:${t.done?'#34C759':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:1px;">${t.done?'<span style="color:white;font-size:12px;">✓</span>':''}</div>`}
+          ${editMode ? '' : `<div ${soloLectura() ? '' : `onclick="toggleTaskDone('${t.id}')"`} style="pointer-events:${soloLectura() ? 'none' : 'auto'};width:22px;height:22px;border-radius:50%;border:2px solid ${t.done?'#34C759':'var(--border)'};background:${t.done?'#34C759':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:1px;">${t.done?'<span style="color:white;font-size:12px;">✓</span>':''}</div>`}
           <div style="flex:1;min-width:0;">
             <div style="font-size:13.5px;font-weight:600;color:var(--text);${t.done?'text-decoration:line-through;opacity:0.6;':''}"><span style="color:var(--text3);">${t.n}.</span> ${t.sys}</div>
             <div style="font-size:11.5px;color:var(--text2);margin-top:2px;">${t.freq}</div>
@@ -1829,8 +1861,10 @@ function openDet(id) {
   // Botón de cerrar/reabrir: solo para turnos que no vienen de una OT
   // importada (esos ya quedan "Cumplido" automáticamente al importarse).
   const cerrarBtn = document.getElementById('dCerrarBtn');
+  const delBtn = document.getElementById('dDelBtn');
+  if (delBtn) delBtn.style.display = soloLectura() ? 'none' : '';
   if (cerrarBtn) {
-    if (e.origenOT) {
+    if (e.origenOT || soloLectura()) {
       cerrarBtn.style.display = 'none';
     } else {
       cerrarBtn.style.display = '';
@@ -1866,7 +1900,7 @@ function openDet(id) {
     const pct2 = Math.round(doneCount / e.checklist.length * 100);
     tasksHtml = e.checklist.map(t => `
       <li class="task-li" style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;list-style:none;">
-        <div onclick="toggleEvTask('${t.id}')" style="width:20px;height:20px;border-radius:50%;border:2px solid ${t.done?'#34C759':'var(--border)'};background:${t.done?'#34C759':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:1px;">${t.done?'<span style="color:white;font-size:11px;">✓</span>':''}</div>
+        <div ${soloLectura() ? '' : `onclick="toggleEvTask('${t.id}')"`} style="pointer-events:${soloLectura() ? 'none' : 'auto'};width:20px;height:20px;border-radius:50%;border:2px solid ${t.done?'#34C759':'var(--border)'};background:${t.done?'#34C759':'transparent'};flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:1px;">${t.done?'<span style="color:white;font-size:11px;">✓</span>':''}</div>
         <div style="flex:1;">
           <div style="font-size:13px;${t.done?'text-decoration:line-through;opacity:0.6;':''}"><span style="color:var(--text3);">${t.n}.</span> ${t.sys}</div>
           ${(t.costo > 0 && !(typeof ocultarCostos==='function' && ocultarCostos())) ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;">💰 $${t.costo.toLocaleString('es-AR')}${t.tiempo ? ' · ⏱ ' + t.tiempo : ''}</div>` : ''}
@@ -4079,9 +4113,9 @@ function renderDashboard(c) {
   html += kpiContratoHTML(window.__dash);
 
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
-  html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
-  html += `<button onclick="openInformeCompleto()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--red);font-weight:700;font-size:14px;margin-bottom:14px;">📊 Informe completo de indicadores (PDF / Word)</button>`;
-  html += `<button onclick="generarPlanillaKPI()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--border);font-weight:700;font-size:14px;margin-bottom:14px;">📈 Planilla de KPI del contrato (Excel)</button>`;
+  if (!soloLectura()) html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
+  if (!soloLectura()) html += `<button onclick="openInformeCompleto()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--red);font-weight:700;font-size:14px;margin-bottom:14px;">📊 Informe completo de indicadores (PDF / Word)</button>`;
+  if (!soloLectura()) html += `<button onclick="generarPlanillaKPI()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--border);font-weight:700;font-size:14px;margin-bottom:14px;">📈 Planilla de KPI del contrato (Excel)</button>`;
 
   // Fila: Estado de turnos + Tipos de PM
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">`;
@@ -5051,10 +5085,10 @@ function kpiContratoHTML(D){
     const aplica = !it.meses || it.meses.indexOf(mesNum) >= 0;
     const on = !!marcas[it.id];
     h += `<label style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:12.5px;color:${aplica?'var(--text)':'var(--text3)'};${aplica?'cursor:pointer;':''}">
-      <input type="checkbox" ${on?'checked':''} ${aplica?'':'disabled'} onchange="toggleKpiSeg('${M.key}','${it.id}')" style="width:18px;height:18px;accent-color:var(--red);flex:none;">
+      <input type="checkbox" ${on?'checked':''} ${(aplica && !soloLectura())?'':'disabled'} onchange="toggleKpiSeg('${M.key}','${it.id}')" style="width:18px;height:18px;accent-color:var(--red);flex:none;">
       <span>${it.nombre}${aplica?'':' <em style="color:var(--text3);">(no aplica este mes)</em>'}</span></label>`;
   });
-  h += `<div style="font-size:11px;color:var(--text3);margin-top:4px;">Tildá cada informe a medida que lo entregás; el indicador no se calcula solo.</div></div>`;
+  h += `<div style="font-size:11px;color:var(--text3);margin-top:4px;">${soloLectura() ? 'Solo lectura: estas marcas las carga el Admin.' : 'Tildá cada informe a medida que lo entregás; el indicador no se calcula solo.'}</div></div>`;
 
   // Evolución desde julio
   const th = 'text-align:right;padding:9px 6px;color:var(--text3);font-size:10px;letter-spacing:.03em;';
@@ -5073,7 +5107,7 @@ function kpiContratoHTML(D){
   });
   h += `</tbody></table></div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Verde = cumple la meta · rojo = no cumple · amarillo = mes en curso · gris = sin datos. * Mes en curso (hasta hoy) / MTTR estimado.</div>
-    <button onclick="generarInformeKPIWord('${kpiMesSel}')" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📘 Informe mensual de KPI — ${M.nombre} (Word)</button>`;
+    ${soloLectura() ? '' : `<button onclick="generarInformeKPIWord('${kpiMesSel}')" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📘 Informe mensual de KPI — ${M.nombre} (Word)</button>`}`;
   return h;
 }
 
@@ -5311,20 +5345,58 @@ function aplicarRol(){
     document.querySelectorAll('.btn-add-nav, .fab').forEach(b=> b.style.display='none');
   }
 
+  // Etiqueta visible de modo solo lectura
+  if (soloLectura()) {
+    const bs = document.getElementById('brandSub');
+    if (bs && bs.textContent.indexOf('Solo lectura') === -1) bs.textContent += ' · Solo lectura';
+  }
+
   // Botón de salir en el header (para poder cambiar de usuario)
   if(!document.getElementById('logoutBtn')){
     const add = document.querySelector('.btn-add-nav');
     if(add && add.parentElement){
       const lo = document.createElement('button');
-      lo.id='logoutBtn'; lo.textContent='⏻';
+      lo.id='logoutBtn';
+      lo.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5v9"/><path d="M17.7 6.3a8.5 8.5 0 1 1-11.4 0"/></svg>';
       lo.title = 'Salir ('+(NOMBRE_ROL[userRole]||userRole)+')';
       lo.setAttribute('aria-label','Salir');
-      lo.style.cssText='background:rgba(255,255,255,.15);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:16px;margin-left:8px;cursor:pointer;';
+      lo.style.cssText='background:rgba(255,255,255,.15);border:none;color:#fff;width:38px;height:38px;border-radius:50%;font-size:16px;margin-left:8px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;';
       lo.onclick = accesoLogout;
       add.parentElement.insertBefore(lo, add.nextSibling);
     }
   }
 }
+
+/* ── Guardias de solo lectura ──────────────────────────────────────────────
+   Toda función que modifica, carga o descarga queda bloqueada para el rol de
+   solo lectura (Supervisor Vicuña). Es la segunda capa: los botones ya no se
+   dibujan para ese rol, y aun así, si alguien llegara a invocar la función
+   (consola, caché vieja, etc.) no hace nada. La primera barrera de escritura
+   está en la guardia de Firebase (ver _guardRef). */
+const FUNCIONES_SOLO_ESCRITURA = [
+  // turnos
+  'openAdd','saveEv','toggleCumplidoEv','toggleEvTask','delEv',
+  // plan PM
+  'toggleEditMode','toggleTaskDone','deleteTask','addTask','editTask','saveTask','removeRepFromTask','importRepuestos',
+  // cargas (Excel / PDF)
+  'importarTurnosExcel','importarEstadoPago','importarRosterReparaciones','openImportModal','otHandleFiles','otConfirmImport',
+  // correcciones masivas
+  'convertirPredictivosAInsp','convertirPM10aPM5','corregirFechasOT2020','limpiarDuplicadosOT',
+  // descargas / informes
+  'openInformeModal','generarInforme','openPresupuestoModal','generarPresupuestoPDF','openRemitoModal','generarRemitoPDF',
+  'openInformeEjecutivo','generarInformePDF','generarInformeWord','openInformeCompleto','generarInformeCompletoPDF',
+  'generarInformeCompletoWord','generarPlanillaKPI','generarInformeKPIWord',
+  // dashboard
+  'toggleKpiSeg'
+];
+FUNCIONES_SOLO_ESCRITURA.forEach(function(nombre){
+  const orig = window[nombre];
+  if (typeof orig !== 'function') { console.warn('guardia solo lectura: no existe', nombre); return; }
+  window[nombre] = function(){
+    if (soloLectura()) { console.info('Modo solo lectura: acción bloqueada (' + nombre + ')'); return; }
+    return orig.apply(this, arguments);
+  };
+});
 
 // Arrancar el control de acceso cuando el DOM esté listo
 if(document.readyState === 'loading'){

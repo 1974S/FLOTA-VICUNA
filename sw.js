@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vicuna-v64';
+const CACHE_NAME = 'vicuna-v65';
 const ASSETS = [
   './index.html',
   './manifest.json',
