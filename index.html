@@ -967,7 +967,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v66';
+const APP_VERSION = 'v67';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -2463,13 +2463,33 @@ function importarTurnosExcel(file){
 
       let creados = 0, actualizados = 0, omitidos = 0;
       const erroresPatente = [];
+      const porMes = {};  // cantidad de turnos importados por mes (AAAA-MM)
+
+      // Columna de la fecha del turno: acepta "Turno PM/revisión" y variantes como
+      // "Prox. Turno PM/revisión OCTUBRE" (se ignoran mayúsculas, tildes y espacios).
+      const normH = h => String(h||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+      const claves = rows.length ? Object.keys(rows[0]) : [];
+      const colDominio = claves.find(k => normH(k) === 'dominio') || claves.find(k => normH(k).indexOf('dominio') > -1) || 'DOMINIO';
+      const colFecha = claves.find(k => normH(k) === 'turno pm/revision')
+                    || claves.find(k => /turno/.test(normH(k)) && /(pm|revision)/.test(normH(k)));
+      if (!colFecha) {
+        alert('No encontré la columna con la fecha del turno.\n\nBusco una columna que se llame "Turno PM/revisión" (o parecida, por ejemplo "Prox. Turno PM/revisión OCTUBRE").\n\nColumnas del archivo: ' + claves.join(' | '));
+        document.getElementById('inputTurnosExcel').value = '';
+        return;
+      }
 
       rows.forEach(r => {
-        const dom = String(r['DOMINIO'] || '').trim().toUpperCase();
-        if (!dom || dom === 'TOTAL') return; // fila vacía o el renglón de totales
+        // La patente puede venir con espacios ("AG 287 TZ"): se normaliza a "AG287TZ"
+        // y, si fue corregida en la flota, se usa la vigente.
+        const domRaw = String(r[colDominio] || '').replace(/\s+/g,'').toUpperCase();
+        if (!domRaw || domRaw === 'TOTAL') return; // fila vacía o el renglón de totales
+        const dom = flotaPatenteVigente(domRaw);
 
-        const fecha = xlsxFechaISO(r['Turno PM/revisión']);
-        if (!fecha) { omitidos++; erroresPatente.push(dom); return; }
+        const fecha = xlsxFechaISO(r[colFecha]);
+        // Se descartan fechas vacías o absurdas (ej. 1900 cuando la celda está en blanco/0)
+        const anioF = fecha ? parseInt(fecha.slice(0,4), 10) : 0;
+        if (!fecha || anioF < 2024 || anioF > 2035) { omitidos++; erroresPatente.push(dom); return; }
+        porMes[fecha.slice(0,7)] = (porMes[fecha.slice(0,7)] || 0) + 1;
 
         const flotaItem = flotaBuscar(dom);
         const area  = (flotaItem && flotaItem.area) ? flotaItem.area : String(r['ÁREA'] || '').trim();
@@ -2512,11 +2532,16 @@ function importarTurnosExcel(file){
       });
 
       saveLS();
+      // Llevar el calendario al mes con más turnos importados, así se ven enseguida
+      const mesesImp = Object.keys(porMes).sort((a,b) => porMes[b]-porMes[a]);
+      if (mesesImp.length) { const [yy,mm] = mesesImp[0].split('-').map(Number); vDate = new Date(yy, mm-1, 1); selDay = null; }
       render();
       document.getElementById('inputTurnosExcel').value = '';
 
       let msg = `Importación de turnos completa.\n\nCreados: ${creados}\nActualizados: ${actualizados}`;
-      if (omitidos) msg += `\nOmitidos (sin fecha válida en "Turno PM/revisión"): ${omitidos} — ${erroresPatente.join(', ')}`;
+      const resMes = Object.keys(porMes).sort().map(k => { const [yy,mm] = k.split('-'); return `${MONTHS[parseInt(mm,10)-1]} ${yy}: ${porMes[k]}`; });
+      if (resMes.length) msg += `\n\nTurnos por mes:\n` + resMes.join('\n');
+      if (omitidos) msg += `\n\nOmitidos (sin fecha válida en la columna "${colFecha}"): ${omitidos} — ${erroresPatente.join(', ')}`;
       alert(msg);
     } catch(err) {
       console.error('Error importando turnos Excel:', err);
