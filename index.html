@@ -967,7 +967,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v67';
+const APP_VERSION = 'v68';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1119,7 +1119,8 @@ function clearDay() {
   render();
 }
 
-function renderTurnos(c) {
+// Lista filtrada de Turnos (según rol, día elegido y texto del buscador)
+function turnosFiltrar() {
   const esSup = (typeof esSupervisor==='function' && esSupervisor());
   // Supervisor: solo turnos no cumplidos (pendientes + próx. límite + vencidos)
   let base = esSup ? events.filter(e => !(e.origenOT || e.cumplido)) : [...events];
@@ -1139,11 +1140,29 @@ function renderTurnos(c) {
       (e.tec||'').toLowerCase().includes(q)
     );
   }
+  return { esSup, base, list };
+}
+
+// Solo esta parte se redibuja al escribir en el buscador (el cuadro no pierde el foco)
+function turnosListaHtml(list) {
+  if (!list.length) return `<div class="empty"><div class="empty-icon">🔎</div><div class="empty-txt">Sin resultados</div></div>`;
+  let h = `<div class="ev-list">`;
+  list.forEach(e => { h += buildCard(e); });
+  return h + `</div>`;
+}
+function actualizarTurnosLista() {
+  const l = document.getElementById('turnosLista'); if (!l) return;
+  l.innerHTML = turnosListaHtml(turnosFiltrar().list);
+  bindCards(l);
+}
+
+function renderTurnos(c) {
+  const { esSup, base, list } = turnosFiltrar();
 
   let html = `
     <div class="searchbar">
       <span class="searchbar-icon">🔍</span>
-      <input placeholder="Buscar patente, interno, área, técnico..." value="${srch}" oninput="srch=this.value;renderTurnos(document.getElementById('content'))">
+      <input id="turnosBusq" autocomplete="off" placeholder="Buscar patente, interno, área, técnico..." value="${srch}" oninput="srch=this.value;actualizarTurnosLista()">
     </div>
     <div style="padding:0 16px 10px;">
       ${(typeof esAdmin==='function' && esAdmin()) ? `
@@ -1169,13 +1188,7 @@ function renderTurnos(c) {
     </div>`;
   }
 
-  if (!list.length) {
-    html += `<div class="empty"><div class="empty-icon">🔎</div><div class="empty-txt">Sin resultados</div></div>`;
-  } else {
-    html += `<div class="ev-list">`;
-    list.forEach(e => { html += buildCard(e); });
-    html += `</div>`;
-  }
+  html += `<div id="turnosLista">${turnosListaHtml(list)}</div>`;
 
   c.innerHTML = html;
   bindCards(c);
@@ -1186,9 +1199,10 @@ function renderTurnos(c) {
 }
 
 
-function renderFlota(c) {
-  const busq = (document.getElementById('flotaBusq') || {value:''}).value || '';
-  const q = busq.toLowerCase();
+// Lista de resultados de Flota (solo esta parte se redibuja al escribir, así el cuadro de
+// búsqueda no pierde el foco y se puede tipear la patente o el interno completos de corrido)
+function flotaListaHtml(busq) {
+  const q = String(busq||'').toLowerCase();
   const lista = FLOTA_VICUNA.filter(v =>
     v.patente.toLowerCase().includes(q) ||
     (v.interno||'').toLowerCase().includes(q) ||
@@ -1203,14 +1217,6 @@ function renderFlota(c) {
   });
 
   let html = `
-    <div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between;">
-      <span>Flota Vicuña — ${FLOTA_VICUNA.length} unidades</span>
-    </div>
-    <div style="padding:0 16px 8px;">
-      <input class="fi" id="flotaBusq" placeholder="Buscar patente, interno, modelo..."
-        value="${busq}" style="margin-bottom:0;"
-        oninput="renderFlota(document.getElementById('content'))">
-    </div>
     <div style="padding:0 16px 8px;display:flex;gap:8px;flex-wrap:wrap;">
       <span style="font-size:12px;color:var(--text3);">${lista.length} resultado${lista.length!==1?'s':''}</span>
     </div>
@@ -1238,8 +1244,28 @@ function renderFlota(c) {
   });
 
   html += `</div>`;
-  c.innerHTML = html;
+  return html;
 }
+
+function renderFlota(c) {
+  const busq = (document.getElementById('flotaBusq') || {value:''}).value || '';
+  c.innerHTML = `
+    <div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between;">
+      <span>Flota Vicuña — ${FLOTA_VICUNA.length} unidades</span>
+    </div>
+    <div style="padding:0 16px 8px;">
+      <input class="fi" id="flotaBusq" placeholder="Buscar patente, interno, modelo..." autocomplete="off"
+        value="${busq}" style="margin-bottom:0;"
+        oninput="actualizarFlotaLista()">
+    </div>
+    <div id="flotaLista">${flotaListaHtml(busq)}</div>`;
+}
+function actualizarFlotaLista() {
+  const i = document.getElementById('flotaBusq'), l = document.getElementById('flotaLista');
+  if (l) l.innerHTML = flotaListaHtml(i ? i.value : '');
+}
+
+
 
 let planSub = 'PM5';
 let editMode = false;
