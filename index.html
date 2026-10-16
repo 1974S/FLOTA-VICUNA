@@ -859,6 +859,11 @@ whenAuthReady(()=> refTurnos.on('value', snap => {
   if (data) {
     events = Object.values(data).sort((a,b) => a.id - b.id);
     nid = Math.max(0, ...events.map(e => e.id)) + 1;
+    // Patentes corregidas en la flota (ej. AI359GZ -> AI313GZ): se actualizan los turnos que tenían la anterior
+    events.forEach(e => {
+      const vig = flotaPatenteVigente(e.dom);
+      if (vig && vig !== e.dom) { e.dom = vig; if (esAdmin()) { try { saveFirebase(e); } catch(x){} } }
+    });
   } else {
     events = [];
     nid = 1;
@@ -869,111 +874,126 @@ whenAuthReady(()=> refTurnos.on('value', snap => {
 
 // ─── FLOTA VICUÑA ─────────────────────────────────────────────────────────
 const FLOTA_VICUNA = [
-  {patente:"OTV221", vehiculo:"FIAT FIORINO FURGON 1.4 EVO", año:2015, area:""},
-  {patente:"OKR613", vehiculo:"VOLKSWAGEN GOL TREND 1.6 5P", año:2015, area:""},
-  {patente:"AG287TV", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Flúor"},
-  {patente:"AG287TT", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool Minero"},
-  {patente:"AG287TU", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Recursos Hídricos"},
-  {patente:"AG287TX", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Construcciones"},
-  {patente:"AG287TZ", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Caminos"},
-  {patente:"AG287TY", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool SJ"},
-  {patente:"AG356JV", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Recursos Hídricos"},
-  {patente:"AG331LO", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool Minero"},
-  {patente:"AG356JW", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Operaciones JM"},
-  {patente:"AG287TW", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Patrimonial"},
-  {patente:"AG310QA", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"HyS"},
-  {patente:"AG331LQ", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Topografía"},
-  {patente:"AG331LR", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Geotecnia"},
-  {patente:"AG331LS", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Recursos Hídricos"},
-  {patente:"AG331LP", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool Minero"},
-  {patente:"AG356JE", vehiculo:"TOYOTA HILUX SW4 TDI SRX AUT L/23", año:2023, area:"Flúor"},
-  {patente:"AG331LZ", vehiculo:"TOYOTA HILUX SW4 TDI SRX AUT L/23", año:2023, area:"Flúor"},
-  {patente:"AF953DY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR", año:2024, area:"HyS/Brigada"},
-  {patente:"AG365GT", vehiculo:"VOLKSWAGEN VIRTUS 1.0 TSI HIGHLINE AT", año:2024, area:""},
-  {patente:"AI077WK", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
-  {patente:"AI077WJ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Recursos Hídricos"},
-  {patente:"AI077WI", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Construcciones"},
-  {patente:"AI077WH", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
-  {patente:"AI077WG", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
-  {patente:"AI077WF", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"CEO"},
-  {patente:"AI077WE", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Patrimonial"},
-  {patente:"AI077WD", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
-  {patente:"AI029RZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS"},
-  {patente:"AH836XW", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS"},
-  {patente:"AH836XX", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
-  {patente:"AH836XY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
-  {patente:"AH836XZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Geología"},
-  {patente:"AH836YA", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
-  {patente:"AH836YC", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Geotecnia"},
-  {patente:"AI029RY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
-  {patente:"AI079WI", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Pool Minero"},
-  {patente:"AI103WQ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
-  {patente:"AI079WE", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Mantenimiento"},
-  {patente:"AI103WE", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Sr. Country Director"},
-  {patente:"AI079WJ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
-  {patente:"AI079WK", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
-  {patente:"AI079WQ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
-  {patente:"AI079WS", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Mantenimiento"},
-  {patente:"AI079WX", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Planta de Combustible"},
-  {patente:"AI079WV", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
-  {patente:"AI079WY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS"},
-  {patente:"AI103WO", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Mantenimiento"},
-  {patente:"AI103WP", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones JM"},
-  {patente:"AI103WV", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
-  {patente:"AI103WW", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
-  {patente:"AI103WX", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"RRCC"},
-  {patente:"AI103WY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
-  {patente:"AI103WZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
-  {patente:"AI079WD", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
-  {patente:"AI079WF", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI079WH", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
-  {patente:"AI079WT", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Director"},
-  {patente:"AI103WD", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"HyS"},
-  {patente:"AI035JZ", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Operaciones Mina"},
-  {patente:"AI029RN", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Legales"},
-  {patente:"AI029RO", vehiculo:"TOYOTA HIACE 2.8 WAGON AT6 10 AS.", año:2026, area:""},
-  {patente:"AI012SL", vehiculo:"COROLLA HEV 1.8 SEG ECTV", año:2026, area:""},
-  {patente:"AI012SM", vehiculo:"COROLLA HEV 1.8 SEG ECTV", año:2026, area:""},
-  {patente:"AI079WU", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones JM"},
-  {patente:"AI313GF", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
-  {patente:"AI313GG", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Geología"},
-  {patente:"AI313GH", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Campamento"},
-  {patente:"AI313GS", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
-  {patente:"AI313GT", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
-  {patente:"AI313GU", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
-  {patente:"AI313GV", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
-  {patente:"AI313GY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
-  {patente:"AI340AA", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"RRCC"},
-  {patente:"AI359GZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI359PH", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI359PQ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI359PS", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI359PT", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI414AU", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI414AV", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI414AW", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI414AX", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
-  {patente:"AI414AY", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
-  {patente:"AI414AZ", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"}
+  {patente:"OTV221", interno:"", vehiculo:"FIAT FIORINO FURGON 1.4 EVO", año:2015, area:""},
+  {patente:"OKR613", interno:"", vehiculo:"VOLKSWAGEN GOL TREND 1.6 5P", año:2016, area:""},
+  {patente:"AG287TV", interno:"VL103", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Flúor"},
+  {patente:"AG287TT", interno:"VL101", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool Minero"},
+  {patente:"AG287TU", interno:"VL144", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Recursos Hídricos"},
+  {patente:"AG287TX", interno:"VL105", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Construcciones"},
+  {patente:"AG287TZ", interno:"VL139", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Caminos"},
+  {patente:"AG287TY", interno:"VL106", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool SJ"},
+  {patente:"AG356JV", interno:"VL114", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Recursos Hídricos"},
+  {patente:"AG331LO", interno:"VL109", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool Minero"},
+  {patente:"AG356JW", interno:"VL115", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Operaciones JM"},
+  {patente:"AG287TW", interno:"VL104", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Patrimonial"},
+  {patente:"AG310QA", interno:"VL132", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"HyS"},
+  {patente:"AG331LQ", interno:"VL133", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Topografía"},
+  {patente:"AG331LR", interno:"VL112", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Geotecnia"},
+  {patente:"AG331LS", interno:"VL113", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Recursos Hídricos"},
+  {patente:"AG331LP", interno:"VL110", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"Pool Minero"},
+  {patente:"AG356JE", interno:"VL503", vehiculo:"TOYOTA HILUX SW4 TDI SRX AUT L/23", año:2023, area:"Flúor"},
+  {patente:"AG331LZ", interno:"VL504", vehiculo:"TOYOTA HILUX SW4 TDI SRX AUT L/23", año:2023, area:"Flúor"},
+  {patente:"AF953DY", interno:"VL100", vehiculo:"TOYOTA HILUX L/21 2.8 DC 4X4 TDI SR", año:2023, area:"HyS/Brigada"},
+  {patente:"AG365GT", interno:"", vehiculo:"VOLKSWAGEN VIRTUS 1.0 TSI HIGHLINE AT", año:2025, area:""},
+  {patente:"AI077WK", interno:"VL130", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
+  {patente:"AI077WJ", interno:"VL129", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Recursos Hídricos"},
+  {patente:"AI077WI", interno:"VL128", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Construcciones"},
+  {patente:"AI077WH", interno:"VL127", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
+  {patente:"AI077WG", interno:"VL126", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
+  {patente:"AI077WF", interno:"VL501", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"CEO"},
+  {patente:"AI077WE", interno:"VL125", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Patrimonial"},
+  {patente:"AI077WD", interno:"VL124", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
+  {patente:"AI029RZ", interno:"VL123", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS"},
+  {patente:"AH836XW", interno:"VL116", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS"},
+  {patente:"AH836XX", interno:"VL117", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
+  {patente:"AH836XY", interno:"VL118", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
+  {patente:"AH836XZ", interno:"VL119", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Geología"},
+  {patente:"AH836YA", interno:"VL120", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
+  {patente:"AH836YC", interno:"VL121", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Geotecnia"},
+  {patente:"AI029RY", interno:"VL122", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
+  {patente:"AI079WI", interno:"VL135", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Pool Minero"},
+  {patente:"AI103WQ", interno:"VL146", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
+  {patente:"AI079WE", interno:"VL108", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Mantenimiento"},
+  {patente:"AI103WE", interno:"VL508", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Sr. Country Director"},
+  {patente:"AI079WJ", interno:"VL136", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
+  {patente:"AI079WK", interno:"VL137", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
+  {patente:"AI079WQ", interno:"VL138", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
+  {patente:"AI079WS", interno:"VL107", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Mantenimiento"},
+  {patente:"AI079WX", interno:"VL142", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Planta de Combustible"},
+  {patente:"AI079WV", interno:"VL141", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
+  {patente:"AI079WY", interno:"VL143", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS"},
+  {patente:"AI103WO", interno:"VL102", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Mantenimiento"},
+  {patente:"AI103WP", interno:"VL145", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones JM"},
+  {patente:"AI103WV", interno:"VL147", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
+  {patente:"AI103WW", interno:"VL148", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
+  {patente:"AI103WX", interno:"VL149", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"RRCC"},
+  {patente:"AI103WY", interno:"VL150", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
+  {patente:"AI103WZ", interno:"VL151", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
+  {patente:"AI079WD", interno:"VL131", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
+  {patente:"AI079WF", interno:"VL111", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI079WH", interno:"VL134", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
+  {patente:"AI079WT", interno:"VL502", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Director"},
+  {patente:"AI103WD", interno:"VL505", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"HyS"},
+  {patente:"AI035JZ", interno:"VL506", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Operaciones Mina"},
+  {patente:"AI029RN", interno:"VL507", vehiculo:"TOYOTA SW4 TDI SRX AUT L/24", año:2026, area:"Legales"},
+  {patente:"AI029RO", interno:"", vehiculo:"TOYOTA HIACE 2.8 WAGON AT6 10 AS.", año:2026, area:""},
+  {patente:"AI012SL", interno:"", vehiculo:"COROLLA HEV 1.8 SEG ECTV", año:2026, area:""},
+  {patente:"AI012SM", interno:"", vehiculo:"COROLLA HEV 1.8 SEG ECTV", año:2026, area:""},
+  {patente:"AI079WU", interno:"VL140", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones JM"},
+  {patente:"AI313GF", interno:"VL152", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Ambiente"},
+  {patente:"AI313GG", interno:"VL153", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Geología"},
+  {patente:"AI313GH", interno:"VL154", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Campamento"},
+  {patente:"AI313GS", interno:"VL155", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
+  {patente:"AI313GT", interno:"VL156", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Caminos"},
+  {patente:"AI313GU", interno:"VL157", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Perforaciones"},
+  {patente:"AI313GV", interno:"VL158", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones FDS"},
+  {patente:"AI313GY", interno:"VL159", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"HyS/Brigada"},
+  {patente:"AI340AA", interno:"VL160", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"RRCC"},
+  {patente:"AI313GZ", interno:"VL167", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina", previa:"AI359GZ"},
+  {patente:"AI359PH", interno:"VL169", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI359PQ", interno:"VL168", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI359PS", interno:"VL171", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI359PT", interno:"VL170", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI414AU", interno:"VL163", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI414AV", interno:"VL165", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI414AW", interno:"VL166", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI414AX", interno:"VL164", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Operaciones Mina"},
+  {patente:"AI414AY", interno:"VL161", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Flúor"},
+  {patente:"AI414AZ", interno:"VL162", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:"Dir. Servicios"},
+  {patente:"AI359PI", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""},
+  {patente:"AI359PJ", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""},
+  {patente:"AI359PK", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""},
+  {patente:"AI359PL", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""},
+  {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v65';
+const APP_VERSION = 'v66';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
+
+// Busca una unidad por patente (también reconoce una patente anterior corregida, ver `previa`)
+function flotaBuscar(pat){
+  const p = String(pat||'').replace(/\s+/g,'').toUpperCase();
+  return FLOTA_VICUNA.find(x => x.patente === p || x.previa === p);
+}
+// Interno de una patente ('' si la unidad todavía no tiene)
+function flotaInterno(pat){ const v = flotaBuscar(pat); return (v && v.interno) || ''; }
+// Patente vigente (si venía con una patente anterior, devuelve la corregida)
+function flotaPatenteVigente(pat){ const v = flotaBuscar(pat); return v ? v.patente : pat; }
 
 function initFlotaDatalist() {
   const dl = document.getElementById('flotaList');
   if (!dl) return;
   dl.innerHTML = FLOTA_VICUNA.map(v =>
-    `<option value="${v.patente}">${v.patente} — ${v.vehiculo} (${v.año})</option>`
+    `<option value="${v.patente}">${v.patente}${v.interno?' · '+v.interno:''} — ${v.vehiculo} (${v.año})</option>`
   ).join('');
 }
 
 function onDomInput(val) {
   const info = document.getElementById('fDomInfo');
   if (!info) return;
-  const v = FLOTA_VICUNA.find(x => x.patente === val.trim());
-  info.textContent = v ? `${v.vehiculo} · ${v.año}` : '';
+  const v = flotaBuscar(val.trim());
+  info.textContent = v ? `${v.vehiculo} · ${v.año}${v.interno ? ' · Interno ' + v.interno : ''}` : '';
   // Autocompletar el área asignada de la unidad (el técnico puede cambiarla igual)
   const fArea = document.getElementById('fArea');
   if (fArea && v && v.area) fArea.value = v.area;
@@ -1113,6 +1133,7 @@ function renderTurnos(c) {
     const q = srch.toLowerCase();
     list = list.filter(e =>
       e.dom.toLowerCase().includes(q) ||
+      flotaInterno(e.dom).toLowerCase().includes(q) ||
       (e.vehiculo||'').toLowerCase().includes(q) ||
       e.area.toLowerCase().includes(q) ||
       (e.tec||'').toLowerCase().includes(q)
@@ -1122,7 +1143,7 @@ function renderTurnos(c) {
   let html = `
     <div class="searchbar">
       <span class="searchbar-icon">🔍</span>
-      <input placeholder="Buscar patente, área, técnico..." value="${srch}" oninput="srch=this.value;renderTurnos(document.getElementById('content'))">
+      <input placeholder="Buscar patente, interno, área, técnico..." value="${srch}" oninput="srch=this.value;renderTurnos(document.getElementById('content'))">
     </div>
     <div style="padding:0 16px 10px;">
       ${(typeof esAdmin==='function' && esAdmin()) ? `
@@ -1170,6 +1191,7 @@ function renderFlota(c) {
   const q = busq.toLowerCase();
   const lista = FLOTA_VICUNA.filter(v =>
     v.patente.toLowerCase().includes(q) ||
+    (v.interno||'').toLowerCase().includes(q) ||
     v.vehiculo.toLowerCase().includes(q) ||
     String(v.año).includes(q)
   );
@@ -1185,7 +1207,7 @@ function renderFlota(c) {
       <span>Flota Vicuña — ${FLOTA_VICUNA.length} unidades</span>
     </div>
     <div style="padding:0 16px 8px;">
-      <input class="fi" id="flotaBusq" placeholder="Buscar patente, modelo, año..."
+      <input class="fi" id="flotaBusq" placeholder="Buscar patente, interno, modelo..."
         value="${busq}" style="margin-bottom:0;"
         oninput="renderFlota(document.getElementById('content'))">
     </div>
@@ -1195,14 +1217,14 @@ function renderFlota(c) {
     <div style="padding:0 12px 80px;">`;
 
   lista.forEach(v => {
-    const t = turnosPorPatente[v.patente] || 0;
+    const t = (turnosPorPatente[v.patente] || 0) + (v.previa ? (turnosPorPatente[v.previa] || 0) : 0);
     const isToyota = v.vehiculo.includes('TOYOTA') || v.vehiculo.includes('COROLLA');
     const icon = isToyota ? '🚙' : '🚗';
     html += `
       <div onclick="otHistorial('${v.patente}')" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;">
         <div style="font-size:24px;width:36px;text-align:center;">${icon}</div>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:0.03em;">${v.patente}</div>
+          <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:0.03em;">${v.patente}${v.interno ? `<span style="font-size:11.5px;font-weight:700;color:var(--red);margin-left:8px;letter-spacing:0;">${v.interno}</span>` : ''}</div>
           <div style="font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.vehiculo}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px;">Año ${v.año}</div>
         </div>
@@ -1711,7 +1733,7 @@ function buildCard(e) {
       <div class="ev-body">
         <div class="ev-row1">
           <div>
-            <span class="ev-dom">${e.dom}</span>
+            <span class="ev-dom">${e.dom}</span>${flotaInterno(e.dom) ? `<span class="ev-int" style="font-size:11px;font-weight:700;color:var(--red);"> ${flotaInterno(e.dom)}</span>` : ''}
             ${e.vehiculo ? `<span class="ev-int" style="font-size:10px;"> ${e.vehiculo}</span>` : ''}
           </div>
           <span class="ev-date">${fmtDate(e.fecha)}</span>
@@ -1814,7 +1836,7 @@ function saveEv() {
     return;
   }
 
-  const flotaItem = FLOTA_VICUNA.find(x => x.patente === dom);
+  const flotaItem = flotaBuscar(dom);
   const checklist = (planData && planData[pm])
     ? planData[pm].map(t => ({ id: t.id, n: t.n, sys: t.sys, freq: t.freq, costo: t.costo || 0, tiempo: t.tiempo || '', repuestos: t.repuestos || [], notas: t.notas || '', done: false }))
     : null;
@@ -1918,6 +1940,7 @@ function openDet(id) {
   document.getElementById('dBody').innerHTML = `
     <div class="det-grid">
       <div class="det-item"><span class="det-lbl">Dominio</span><span class="det-val">${e.dom}</span></div>
+      ${flotaInterno(e.dom) ? `<div class="det-item"><span class="det-lbl">Interno</span><span class="det-val">${flotaInterno(e.dom)}</span></div>` : ''}
       <div class="det-item"><span class="det-lbl">Vehículo</span><span class="det-val">${e.vehiculo || '—'}</span></div>
       <div class="det-item"><span class="det-lbl">Año</span><span class="det-val">${e.año || '—'}</span></div>
       <div class="det-item"><span class="det-lbl">Km actuales</span><span class="det-val">${fmtKm(e.kmA)}</span></div>
@@ -2173,11 +2196,26 @@ function otLoadLocal(){
 function otSaveLocal(){
   try { localStorage.setItem(OT_KEY, JSON.stringify(otData)); } catch(e){}
 }
+// Si una patente de la flota fue corregida (campo `previa`), pasa el historial de OT a la patente vigente
+function otMigrarPatentes(){
+  let cambio = false;
+  Object.keys(otData).forEach(k => {
+    const vig = flotaPatenteVigente(k);
+    if (vig && vig !== k) {
+      const arr = otData[k] || [];
+      arr.forEach(o => { o.patente = vig; if (o.id) o.id = String(o.id).replace(k, vig); });
+      otData[vig] = (otData[vig] || []).concat(arr);
+      delete otData[k]; cambio = true;
+    }
+  });
+  if (cambio && esAdmin()) otPushFirebase();
+  return cambio;
+}
 function otBindFirebase(){
   try {
     whenAuthReady(()=> db.ref('ordenes_trabajo').on('value', snap => {
       const v = snap.val();
-      if(v){ otData = v; otSaveLocal(); otAutoLimpiar(); if(curTab==='inicio'||curTab==='flota') render(); }
+      if(v){ otData = v; otMigrarPatentes(); otSaveLocal(); otAutoLimpiar(); if(curTab==='inicio'||curTab==='flota') render(); }
     }));
   } catch(e){ console.warn('OT firebase', e); }
 }
@@ -2433,7 +2471,7 @@ function importarTurnosExcel(file){
         const fecha = xlsxFechaISO(r['Turno PM/revisión']);
         if (!fecha) { omitidos++; erroresPatente.push(dom); return; }
 
-        const flotaItem = FLOTA_VICUNA.find(x => x.patente === dom);
+        const flotaItem = flotaBuscar(dom);
         const area  = (flotaItem && flotaItem.area) ? flotaItem.area : String(r['ÁREA'] || '').trim();
         const vehiculo = flotaItem ? flotaItem.vehiculo : `${String(r['TIPO']||'').trim()} ${String(r['MODELO']||'').trim()}`.trim();
         const año = flotaItem ? flotaItem.año : (r['AÑO'] || '');
@@ -2840,9 +2878,11 @@ function initRepDatalist(){
 }
 
 function onPresDomInput(val){
-  const v = FLOTA_VICUNA.find(x => x.patente === val.trim().toUpperCase());
+  const v = flotaBuscar(val.trim());
   const campo = document.getElementById('pVehiculo');
   if (campo && v) campo.value = v.vehiculo;
+  const ci = document.getElementById('pInterno');
+  if (ci && v) ci.value = v.interno || '';
 }
 
 function openPresupuestoModal(){
@@ -3069,9 +3109,11 @@ function generarPresupuestoPDF(){
 let remItems = [];
 
 function onRemDomInput(val){
-  const v = FLOTA_VICUNA.find(x => x.patente === val.trim().toUpperCase());
+  const v = flotaBuscar(val.trim());
   const campo = document.getElementById('rVehiculo');
   if (campo && v) campo.value = v.vehiculo;
+  const ci = document.getElementById('rInterno');
+  if (ci && v) ci.value = v.interno || '';
 }
 
 function openRemitoModal(){
@@ -3397,7 +3439,7 @@ function otConfirmImport(){
     if(o.fecha_iso){
       const existe = events.some(e=>e.origenOT===o.id || (e.origenOT && e.dom===p && (e.kmU||0)===(o.km_efectivo||0) && (e.obs||'')==='Generado desde OT '+(o.nro||'')));
       if(!existe){
-        const veh = (FLOTA_VICUNA.find(v=>v.patente===p)||{}).vehiculo || o.modelo || '';
+        const veh = (flotaBuscar(p)||{}).vehiculo || o.modelo || '';
         const km = o.km_efectivo||0;
         const pmCode = o.tipo==='PM' ? 'PM5' : (o.tipo==='Correctivo' ? 'CORR' : 'CORR');
         const nid = Date.now() + Math.floor(Math.random()*100000) + Math.floor(Math.random()*1000);
