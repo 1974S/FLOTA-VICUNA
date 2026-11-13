@@ -1091,7 +1091,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v80';
+const APP_VERSION = 'v81';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -3822,7 +3822,9 @@ function openQrFlota(){
   const win = window.open('', '_blank');
   if(!win){ alert('Permití las ventanas emergentes para imprimir la hoja de QR.'); return; }
   let celdas = '';
-  FLOTA_VICUNA.forEach(v=>{
+  const POR_HOJA = 15;                       // 3 columnas x 5 filas por hoja A4
+  FLOTA_VICUNA.forEach((v, idx)=>{
+    if(idx>0 && idx%POR_HOJA===0) celdas += '</div><div class="grid'+((FLOTA_VICUNA.length-idx)>POR_HOJA?' salto':'')+'">';
     const svg = fvQrSvg(fvQrUrl(v.patente), 4, 1, true);
     celdas += '<div class="cel">'+(logo?'<div class="lgv"><img src="'+logo+'"></div>':'')+'<div class="dat">'
       +'<div class="pat">'+v.patente+(v.interno?' <span class="int">'+v.interno+'</span>':'')+'</div>'
@@ -3832,16 +3834,17 @@ function openQrFlota(){
   });
   win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>QR Flota Vicuña</title>'
     +'<style>@page{size:A4;margin:9mm;}body{font-family:Arial,Helvetica,sans-serif;color:#111;}'
-    +'.hd{display:flex;align-items:center;gap:10px;margin-bottom:10px;}.hd img{height:28px;}.hd h1{font-size:14px;margin:0;}'
-    +'.grid{display:grid;grid-template-columns:repeat(6,30.3mm);gap:2mm;}'
-    +'.cel{box-sizing:border-box;border:0.3mm solid #111;border-radius:1.5mm;width:30.3mm;height:22mm;overflow:hidden;text-align:center;page-break-inside:avoid;break-inside:avoid;display:flex;align-items:center;}'
-    +'.dat{flex:1;min-width:0;padding:0.5mm;}'
-    +'.lgv{flex:0 0 9.1mm;width:9.1mm;height:22mm;position:relative;overflow:hidden;}'
-    +'.lgv img{position:absolute;top:50%;left:50%;width:22mm;height:9.1mm;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    +'.pat{font-size:7.5px;font-weight:800;color:#111;letter-spacing:.4px;line-height:1.1;white-space:nowrap;}.int{font-size:5.5px;color:#333;font-weight:700;letter-spacing:0;}'
-    +'.qr{width:15.4mm;height:15.4mm;margin:0.2mm auto 0.4mm;}.mod{font-size:4px;color:#444;line-height:2mm;height:2mm;overflow:hidden;white-space:nowrap;}</style></head><body>'
+    +'.hd{display:flex;align-items:center;gap:10px;margin-bottom:2.5mm;height:8mm;}.hd img{height:28px;}.hd h1{font-size:14px;margin:0;}'
+    +'.grid{display:grid;grid-template-columns:repeat(3,62mm);gap:2.5mm;margin-bottom:2.5mm;}'
+    +'.grid.salto{page-break-after:always;break-after:page;}'
+    +'.cel{box-sizing:border-box;border:0.4mm solid #111;border-radius:2.5mm;width:62mm;height:50mm;overflow:hidden;text-align:center;page-break-inside:avoid;break-inside:avoid;display:flex;align-items:center;}'
+    +'.dat{flex:1;min-width:0;padding:1.5mm;}'
+    +'.lgv{flex:0 0 20.7mm;width:20.7mm;height:50mm;position:relative;overflow:hidden;}'
+    +'.lgv img{position:absolute;top:50%;left:50%;width:50mm;height:20.7mm;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+    +'.pat{font-size:14px;font-weight:800;color:#111;letter-spacing:1px;line-height:1.15;white-space:nowrap;}.int{font-size:10px;color:#333;font-weight:700;letter-spacing:0;}'
+    +'.qr{width:35mm;height:35mm;margin:0.6mm auto;}.mod{font-size:7px;color:#444;line-height:1.15;max-height:4.4mm;overflow:hidden;}</style></head><body>'
     +'<div class="hd">'+(logo?'<img src="'+logo+'">':'')+'<h1>Códigos QR — Flota Vicuña ('+FLOTA_VICUNA.length+' unidades)</h1></div>'
-    +'<div class="grid">'+celdas+'</div>'
+    +'<div class="grid'+(FLOTA_VICUNA.length>POR_HOJA?' salto':'')+'">'+celdas+'</div>'
     +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},500);}<\/scr'+'ipt>'
     +'</body></html>');
   win.document.close();
