@@ -604,6 +604,12 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 select option { background: #0A1B40; color: #EAF4FF; }
 
+/* En teléfonos la app se dibuja hasta el borde superior y la barra de estado (hora,
+   batería) tapa lo de arriba. Se reserva siempre ese espacio, aunque el teléfono no lo informe. */
+@media (pointer: coarse) and (max-width: 820px) {
+  :root { --safe-t: max(env(safe-area-inset-top, 0px), 36px); }
+}
+
 /* Encabezado y pestañas */
 .status-bar { background: #0B2256; }
 .navbar { background: var(--hud-head); border-bottom: 1px solid rgba(53,214,255,.22); box-shadow: 0 6px 24px rgba(0,0,0,.35); }
@@ -1085,7 +1091,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v73';
+const APP_VERSION = 'v77';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -3772,18 +3778,20 @@ function imprimirEtiquetaQr(patente){
   if(!win){ alert('Permití las ventanas emergentes para imprimir la etiqueta.'); return; }
   win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>QR '+pat+'</title>'
     +'<style>@page{size:auto;margin:12mm;}body{font-family:Arial,Helvetica,sans-serif;text-align:center;color:#111;}'
-    +'.etq{border:2px solid #CC0000;border-radius:10px;padding:16px;width:300px;margin:0 auto;}'
-    +'.logo{height:36px;margin-bottom:8px;}.pat{font-size:30px;font-weight:800;letter-spacing:2px;color:#CC0000;}'
+    +'.etq{border:2px solid #CC0000;border-radius:10px;width:420px;height:364px;overflow:hidden;margin:0 auto;display:flex;align-items:center;}'
+    +'.dat{flex:1;min-width:0;padding:12px;}'
+    +'.lgv{flex:0 0 150px;width:150px;height:364px;position:relative;overflow:hidden;}'
+    +'.lgv img{position:absolute;top:50%;left:50%;width:364px;height:150px;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+    +'.pat{font-size:30px;font-weight:800;letter-spacing:2px;color:#CC0000;}'
     +'.int{font-size:15px;font-weight:700;color:#333;}.mod{font-size:12px;color:#555;margin:2px 0 10px;}'
-    +'.qr{width:220px;height:220px;margin:0 auto;}.ft{font-size:10px;color:#999;margin-top:8px;}</style></head><body>'
-    +'<div class="etq">'
-    +(logo?'<img class="logo" src="'+logo+'">':'')
+    +'.qr{width:220px;height:220px;margin:0 auto;}.ft{font-size:11px;color:#333;font-weight:700;font-style:italic;margin-top:8px;}</style></head><body>'
+    +'<div class="etq">'+(logo?'<div class="lgv"><img src="'+logo+'"></div>':'')+'<div class="dat">'
     +'<div class="pat">'+pat+'</div>'
     +(v&&v.interno?'<div class="int">Interno '+v.interno+'</div>':'')
     +'<div class="mod">'+(v?(v.vehiculo+' · '+(v.año||'')):'')+'</div>'
     +'<div class="qr">'+svg+'</div>'
-    +'<div class="ft">Escaneá para ver el historial de la unidad</div>'
-    +'</div>'
+    +'<div class="ft">Excelencia en mantenimiento de flota</div>'
+    +'</div></div>'
     +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}<\/scr'+'ipt>'
     +'</body></html>');
   win.document.close();
@@ -3798,17 +3806,20 @@ function openQrFlota(){
   let celdas = '';
   FLOTA_VICUNA.forEach(v=>{
     const svg = fvQrSvg(fvQrUrl(v.patente), 4, 1, true);
-    celdas += '<div class="cel">'
+    celdas += '<div class="cel">'+(logo?'<div class="lgv"><img src="'+logo+'"></div>':'')+'<div class="dat">'
       +'<div class="pat">'+v.patente+(v.interno?' <span class="int">'+v.interno+'</span>':'')+'</div>'
       +'<div class="qr">'+svg+'</div>'
       +'<div class="mod">'+(v.vehiculo||'')+'</div>'
-      +'</div>';
+      +'</div></div>';
   });
   win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>QR Flota Vicuña</title>'
     +'<style>@page{size:A4;margin:9mm;}body{font-family:Arial,Helvetica,sans-serif;color:#111;}'
     +'.hd{display:flex;align-items:center;gap:10px;margin-bottom:10px;}.hd img{height:28px;}.hd h1{font-size:14px;margin:0;}'
     +'.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}'
-    +'.cel{border:1px solid #CC0000;border-radius:8px;padding:7px;text-align:center;page-break-inside:avoid;}'
+    +'.cel{border:1px solid #CC0000;border-radius:8px;height:166px;overflow:hidden;text-align:center;page-break-inside:avoid;break-inside:avoid;display:flex;align-items:center;}'
+    +'.dat{flex:1;min-width:0;padding:6px;}'
+    +'.lgv{flex:0 0 69px;width:69px;height:166px;position:relative;overflow:hidden;}'
+    +'.lgv img{position:absolute;top:50%;left:50%;width:166px;height:69px;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
     +'.pat{font-size:13px;font-weight:800;color:#CC0000;letter-spacing:1px;}.int{font-size:10px;color:#333;font-weight:700;}'
     +'.qr{width:115px;height:115px;margin:3px auto;}.mod{font-size:7.5px;color:#666;line-height:1.1;height:17px;overflow:hidden;}</style></head><body>'
     +'<div class="hd">'+(logo?'<img src="'+logo+'">':'')+'<h1>Códigos QR — Flota Vicuña ('+FLOTA_VICUNA.length+' unidades)</h1></div>'
@@ -4057,10 +4068,10 @@ function fvFichaPublicaRender(){
   }
 
   ov.innerHTML = `
-    <div style="background:var(--hud-head,#0B2256);border-bottom:1px solid rgba(53,214,255,.3);padding:16px 16px 18px;color:#fff;">
+    <div style="background:var(--hud-head,#0B2256);border-bottom:1px solid rgba(53,214,255,.3);padding:calc(16px + var(--safe-t,0px)) 16px 18px;color:#fff;">
       <div style="max-width:640px;margin:0 auto;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
-          ${logo?`<img src="${logo}" alt="Freddy" style="height:26px;border-radius:3px;">`:'<span style="font-weight:800;">FREDDY</span>'}
+          ${logo?`<img src="${logo}" alt="Freddy" style="height:34px;border-radius:4px;">`:'<span style="font-weight:800;">FREDDY</span>'}
           <span style="font-size:11px;opacity:.85;">Flota Vicuña</span>
         </div>
         <div style="font-size:28px;font-weight:800;letter-spacing:.05em;line-height:1.1;">${fvEsc(patente)}${v&&v.interno?` <span style="font-size:15px;font-weight:700;opacity:.9;letter-spacing:0;">${fvEsc(v.interno)}</span>`:''}</div>
