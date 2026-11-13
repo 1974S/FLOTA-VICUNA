@@ -1091,7 +1091,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v78';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -3778,11 +3778,11 @@ function imprimirEtiquetaQr(patente){
   if(!win){ alert('Permití las ventanas emergentes para imprimir la etiqueta.'); return; }
   win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>QR '+pat+'</title>'
     +'<style>@page{size:auto;margin:12mm;}body{font-family:Arial,Helvetica,sans-serif;text-align:center;color:#111;}'
-    +'.etq{border:2px solid #CC0000;border-radius:10px;width:420px;height:364px;overflow:hidden;margin:0 auto;display:flex;align-items:center;}'
+    +'.etq{border:2px solid #111;border-radius:10px;width:420px;height:364px;overflow:hidden;margin:0 auto;display:flex;align-items:center;}'
     +'.dat{flex:1;min-width:0;padding:12px;}'
     +'.lgv{flex:0 0 150px;width:150px;height:364px;position:relative;overflow:hidden;}'
     +'.lgv img{position:absolute;top:50%;left:50%;width:364px;height:150px;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    +'.pat{font-size:30px;font-weight:800;letter-spacing:2px;color:#CC0000;}'
+    +'.pat{font-size:30px;font-weight:800;letter-spacing:2px;color:#111;}'
     +'.int{font-size:15px;font-weight:700;color:#333;}.mod{font-size:12px;color:#555;margin:2px 0 10px;}'
     +'.qr{width:220px;height:220px;margin:0 auto;}.ft{font-size:11px;color:#333;font-weight:700;font-style:italic;margin-top:8px;}</style></head><body>'
     +'<div class="etq">'+(logo?'<div class="lgv"><img src="'+logo+'"></div>':'')+'<div class="dat">'
@@ -3816,11 +3816,11 @@ function openQrFlota(){
     +'<style>@page{size:A4;margin:9mm;}body{font-family:Arial,Helvetica,sans-serif;color:#111;}'
     +'.hd{display:flex;align-items:center;gap:10px;margin-bottom:10px;}.hd img{height:28px;}.hd h1{font-size:14px;margin:0;}'
     +'.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}'
-    +'.cel{border:1px solid #CC0000;border-radius:8px;height:166px;overflow:hidden;text-align:center;page-break-inside:avoid;break-inside:avoid;display:flex;align-items:center;}'
+    +'.cel{border:1px solid #111;border-radius:8px;height:166px;overflow:hidden;text-align:center;page-break-inside:avoid;break-inside:avoid;display:flex;align-items:center;}'
     +'.dat{flex:1;min-width:0;padding:6px;}'
     +'.lgv{flex:0 0 69px;width:69px;height:166px;position:relative;overflow:hidden;}'
     +'.lgv img{position:absolute;top:50%;left:50%;width:166px;height:69px;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    +'.pat{font-size:13px;font-weight:800;color:#CC0000;letter-spacing:1px;}.int{font-size:10px;color:#333;font-weight:700;}'
+    +'.pat{font-size:13px;font-weight:800;color:#111;letter-spacing:1px;}.int{font-size:10px;color:#333;font-weight:700;}'
     +'.qr{width:115px;height:115px;margin:3px auto;}.mod{font-size:7.5px;color:#666;line-height:1.1;height:17px;overflow:hidden;}</style></head><body>'
     +'<div class="hd">'+(logo?'<img src="'+logo+'">':'')+'<h1>Códigos QR — Flota Vicuña ('+FLOTA_VICUNA.length+' unidades)</h1></div>'
     +'<div class="grid">'+celdas+'</div>'
