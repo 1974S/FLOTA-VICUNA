@@ -871,6 +871,7 @@ whenAuthReady(()=> refTurnos.on('value', snap => {
   }
   try { localStorage.setItem('tf_vicuna_v1', JSON.stringify(events)); } catch(e) {}
   window._fvTurnosListo = true;
+  if(window._fvQrPublico && typeof fvFichaPublicaRender==='function'){ try{ fvFichaPublicaRender(); }catch(e){} }
   try{ render(); }catch(e){ console.error('Error en render() (listener turnos):', e); }
 }));
 
@@ -969,7 +970,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v69';
+const APP_VERSION = 'v70';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -2249,6 +2250,7 @@ function otBindFirebase(){
     whenAuthReady(()=> db.ref('ordenes_trabajo').on('value', snap => {
       const v = snap.val(); window._fvOtListo = true;
       if(v){ otData = v; otMigrarPatentes(); otSaveLocal(); otAutoLimpiar(); if(curTab==='inicio'||curTab==='flota') render(); }
+      if(window._fvQrPublico && typeof fvFichaPublicaRender==='function'){ try{ fvFichaPublicaRender(); }catch(e){} }
     }));
   } catch(e){ console.warn('OT firebase', e); }
 }
@@ -3744,6 +3746,156 @@ function fvAbrirDesdeQR(){
     })();
   }catch(e){ console.warn('fvAbrirDesdeQR', e); }
 }
+
+/* ---------- Ficha de consulta por QR (sin PIN) ----------
+   Si la app se abre desde un QR (?u=PATENTE) en un dispositivo sin sesión,
+   se muestra directamente la ficha de la unidad en modo consulta: datos,
+   próximo turno e historial de intervenciones, sin costos. Para entrar al
+   resto de la app o cargar un turno se pide el PIN. */
+function fvPatenteDeUrl(){
+  try{
+    const params = new URLSearchParams(location.search);
+    let pat = params.get('u') || params.get('unidad') || params.get('patente');
+    if(!pat) return null;
+    pat = decodeURIComponent(pat).replace(/\s+/g,'').toUpperCase();
+    const v = (typeof flotaBuscar==='function') ? flotaBuscar(pat) : null;
+    return v ? v.patente : null;
+  }catch(e){ return null; }
+}
+function fvEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fvFechaLinda(iso){
+  if(!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso||'';
+  const p = iso.slice(0,10).split('-'); return p[2]+'/'+p[1]+'/'+p[0];
+}
+function fvFichaPublica(patente){
+  window._fvQrPublico = patente;
+  window._fvQrInicio = Date.now();
+  let ov = document.getElementById('fichaPublica');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'fichaPublica';
+    ov.style.cssText = 'position:fixed;inset:0;background:var(--bg,#0d0d0d);z-index:100000;overflow-y:auto;-webkit-overflow-scrolling:touch;';
+    document.body.appendChild(ov);
+  }
+  fvFichaPublicaRender();
+  // mientras llegan los datos, refrescar; y avisar si no llegan
+  let n = 0;
+  const t = setInterval(function(){
+    n++;
+    if(!window._fvQrPublico || n > 30){ clearInterval(t); return; }
+    if(!(window._fvOtListo && window._fvTurnosListo)) fvFichaPublicaRender();
+    else { fvFichaPublicaRender(); clearInterval(t); }
+  }, 500);
+}
+function fvFichaPublicaSalir(){
+  window._fvQrPublico = null;
+  const ov = document.getElementById('fichaPublica'); if(ov) ov.remove();
+  if(typeof mostrarLogin==='function') mostrarLogin();
+}
+function fvFichaPublicaRender(){
+  const patente = window._fvQrPublico;
+  const ov = document.getElementById('fichaPublica');
+  if(!patente || !ov) return;
+  const scroll = ov.scrollTop;
+  const v = (typeof flotaBuscar==='function') ? flotaBuscar(patente) : null;
+  const listo = !!(window._fvOtListo && window._fvTurnosListo);
+  const demorado = !listo && (Date.now() - (window._fvQrInicio||0) > 12000);
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const esDeLaUnidad = d => d === patente || (v && v.previa && d === v.previa);
+
+  // Turnos de la unidad
+  const evs = (Array.isArray(events) ? events : []).filter(e => esDeLaUnidad(e.dom));
+  const pendientes = evs.filter(e => !(e.origenOT || e.cumplido)).sort((a,b)=>String(a.fecha).localeCompare(String(b.fecha)));
+  const proximo = pendientes.find(e => new Date(e.fecha+'T12:00:00') >= hoy) || null;
+  const atrasado = !proximo ? (pendientes.length ? pendientes[pendientes.length-1] : null) : null;
+
+  // Historial: OT importadas + turnos cerrados a mano
+  const items = [];
+  let ots = (typeof otData!=='undefined' && otData && otData[patente]) ? otData[patente] : [];
+  if(v && v.previa && otData && otData[v.previa]) ots = ots.concat(otData[v.previa]);
+  ots.forEach(o=>{
+    items.push({
+      fecha: (o.fecha_iso && /^\d{4}-\d{2}-\d{2}$/.test(o.fecha_iso)) ? o.fecha_iso : '',
+      fechaTxt: (typeof otFechaMostrar==='function') ? otFechaMostrar(o) : (o.fecha||''),
+      tipo: o.tipo || 'Intervención', km: o.km_efectivo || 0, ref: o.nro ? ('OT '+o.nro) : '',
+      lineas: (o.trabajos||[]).map(t=>'🔧 '+fvEsc(t.desc)).concat((o.repuestos||[]).map(r=>fvEsc((r.cant||1)+'× '+r.desc)))
+    });
+  });
+  evs.filter(e => e.cumplido && !e.origenOT).forEach(e=>{
+    const pm = (typeof PMS!=='undefined' && PMS[e.pm]) ? PMS[e.pm] : null;
+    items.push({ fecha: e.fecha||'', fechaTxt: fvFechaLinda(e.fecha), tipo: pm ? pm.label : 'Turno', km: e.kmA||0, ref:'', lineas: e.obs ? [fvEsc(e.obs)] : [] });
+  });
+  items.sort((a,b)=> String(b.fecha).localeCompare(String(a.fecha)) || (b.km - a.km));
+  const ultimo = items[0] || null;
+  const kmMax = items.reduce((m,i)=>Math.max(m, i.km||0), 0);
+
+  const colorTipo = t => /PM/i.test(t) ? '#34C759' : (/correct/i.test(t) ? '#FF9500' : (/insp/i.test(t) ? '#0A84FF' : '#8E8E93'));
+  const card = 'background:var(--card,#1a1a1a);border:1px solid var(--border,#333);border-radius:12px;';
+  const logo = (typeof FREDDY_LOGO!=='undefined') ? FREDDY_LOGO : '';
+
+  let cuerpo = '';
+  if(!listo && !items.length){
+    cuerpo = `<div style="text-align:center;color:var(--text3,#888);padding:28px 10px;font-size:14px;">${demorado ? 'No se pudo cargar el historial. Revisá la conexión y volvé a escanear.' : 'Cargando historial…'}</div>`;
+  } else {
+    let prox = '';
+    if(proximo){
+      const pm = PMS[proximo.pm];
+      prox = `<div style="${card}padding:12px 14px;margin-bottom:12px;border-left:4px solid #34C759;">
+        <div style="font-size:11px;color:var(--text3,#888);font-weight:700;letter-spacing:.04em;">PRÓXIMO TURNO</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text,#fff);margin-top:2px;">${fvFechaLinda(proximo.fecha)} · ${pm?fvEsc(pm.label):''}</div>
+      </div>`;
+    } else if(atrasado){
+      const pm = PMS[atrasado.pm];
+      prox = `<div style="${card}padding:12px 14px;margin-bottom:12px;border-left:4px solid #FF3B30;">
+        <div style="font-size:11px;color:var(--text3,#888);font-weight:700;letter-spacing:.04em;">TURNO PENDIENTE</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text,#fff);margin-top:2px;">${fvFechaLinda(atrasado.fecha)} · ${pm?fvEsc(pm.label):''}</div>
+      </div>`;
+    }
+    const kpi = (n,l)=>`<div style="flex:1;${card}padding:10px 6px;text-align:center;"><div style="font-size:16px;font-weight:800;color:var(--text,#fff);">${n}</div><div style="font-size:10.5px;color:var(--text3,#888);margin-top:2px;">${l}</div></div>`;
+    const resumen = `<div style="display:flex;gap:8px;margin-bottom:14px;">
+      ${kpi(items.length,'Intervenciones')}
+      ${kpi(ultimo ? (ultimo.fechaTxt||'—') : '—','Último servicio')}
+      ${kpi(kmMax ? kmMax.toLocaleString('es-AR') : '—','Último km')}
+    </div>`;
+    let hist = '';
+    if(!items.length){
+      hist = `<div style="text-align:center;color:var(--text3,#888);padding:22px 10px;font-size:13px;">Esta unidad todavía no tiene intervenciones registradas.</div>`;
+    } else {
+      items.forEach(it=>{
+        const c = colorTipo(it.tipo);
+        hist += `<div style="${card}padding:12px 14px;margin-bottom:9px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="background:${c}22;color:${c};border-radius:12px;padding:2px 9px;font-size:11px;font-weight:700;">${fvEsc(it.tipo)}</span>
+            ${it.km?`<span style="font-size:13px;font-weight:700;color:var(--text,#fff);">${Number(it.km).toLocaleString('es-AR')} km</span>`:''}
+            <span style="font-size:11.5px;color:var(--text3,#888);margin-left:auto;">${fvEsc(it.fechaTxt)}${it.ref?' · '+fvEsc(it.ref):''}</span>
+          </div>
+          ${it.lineas.length?`<div style="margin-top:7px;">${it.lineas.map(l=>`<div style="font-size:12.5px;color:var(--text2,#bbb);padding:2px 0;line-height:1.35;">${l}</div>`).join('')}</div>`:''}
+        </div>`;
+      });
+    }
+    cuerpo = prox + resumen + `<div style="font-size:11px;color:var(--text3,#888);font-weight:700;letter-spacing:.04em;margin:0 2px 8px;">HISTORIAL DE INTERVENCIONES</div>` + hist;
+  }
+
+  ov.innerHTML = `
+    <div style="background:var(--red,#CC0000);padding:16px 16px 18px;color:#fff;">
+      <div style="max-width:640px;margin:0 auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+          ${logo?`<img src="${logo}" alt="Freddy" style="height:26px;border-radius:3px;">`:'<span style="font-weight:800;">FREDDY</span>'}
+          <span style="font-size:11px;opacity:.85;">Flota Vicuña</span>
+        </div>
+        <div style="font-size:28px;font-weight:800;letter-spacing:.05em;line-height:1.1;">${fvEsc(patente)}${v&&v.interno?` <span style="font-size:15px;font-weight:700;opacity:.9;letter-spacing:0;">${fvEsc(v.interno)}</span>`:''}</div>
+        ${v?`<div style="font-size:13px;opacity:.92;margin-top:4px;">${fvEsc(v.vehiculo)} · ${fvEsc(v.año||'')}</div>`:''}
+        ${v&&v.area?`<div style="font-size:12px;opacity:.85;margin-top:2px;">Área: ${fvEsc(v.area)}</div>`:''}
+      </div>
+    </div>
+    <div style="max-width:640px;margin:0 auto;padding:14px 14px 30px;">
+      ${cuerpo}
+      <button onclick="fvFichaPublicaSalir()" style="width:100%;margin-top:14px;padding:12px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card,#1a1a1a);color:var(--text,#fff);font-weight:700;font-size:13px;cursor:pointer;">Ingresar a la app con PIN</button>
+      <div style="text-align:center;font-size:10.5px;color:var(--text3,#888);margin-top:10px;">Freddy El Taller S.R.L. · Mantenimiento Livianos Vicuña</div>
+    </div>`;
+  ov.scrollTop = scroll;
+}
+
 /* ======================= FIN CÓDIGOS QR POR UNIDAD ======================== */
 
 /* ---------- Gráficos del Inicio ---------- */
@@ -5544,6 +5696,9 @@ function accesoInit(){
   // recordar sesión en este dispositivo
   const saved = sessionStorage.getItem('fv_role');
   if(saved === 'admin' || saved === 'supervisor' || saved === 'supervisor_vicuna'){ userRole = saved; aplicarRol(); return; }
+  // Abierta desde un QR sin sesión: ficha de consulta de la unidad, sin pedir PIN
+  const _patQr = (typeof fvPatenteDeUrl==='function') ? fvPatenteDeUrl() : null;
+  if(_patQr && typeof fvFichaPublica==='function'){ fvFichaPublica(_patQr); return; }
   mostrarLogin();
 }
 
