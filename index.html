@@ -1091,7 +1091,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v78';
+const APP_VERSION = 'v80';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -3745,19 +3745,20 @@ function mostrarQrUnidad(patente){
   const pat = v ? v.patente : String(patente||'').toUpperCase();
   const url = fvQrUrl(pat);
   const svg = fvQrSvg(url, 6, 2, true);
-  const sub = v ? `${v.vehiculo} · ${v.año||''}${v.interno?(' · Interno '+v.interno):''}` : '';
+  // La tarjeta mide 420x364; se achica para que entre en pantallas angostas
+  const esc = Math.min(1, (Math.min(window.innerWidth, 500) - 40 - 36) / 420);
   const m = document.createElement('div');
   m.id='qrUnidadModal';
   m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;';
   m.innerHTML = `
-    <div style="background:#fff;border-radius:16px;max-width:360px;width:100%;padding:22px;text-align:center;color:#111;">
+    <div style="background:#fff;border-radius:16px;max-width:460px;width:100%;padding:18px;text-align:center;color:#111;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
         <span style="font-size:16px;font-weight:800;color:#111;">Código QR</span>
         <button onclick="document.getElementById('qrUnidadModal').remove()" style="background:none;border:none;font-size:22px;color:#888;cursor:pointer;line-height:1;">✕</button>
       </div>
-      <div style="font-size:20px;font-weight:800;color:#CC0000;letter-spacing:.04em;">${pat}${v&&v.interno?` <span style="color:#444;font-size:14px;">${v.interno}</span>`:''}</div>
-      ${sub?`<div style="font-size:12px;color:#555;margin-bottom:12px;">${sub}</div>`:'<div style="margin-bottom:12px;"></div>'}
-      <div style="width:220px;height:220px;margin:0 auto 12px;background:#fff;display:flex;align-items:center;justify-content:center;">${svg||'<span style="color:#999;font-size:12px;">No se pudo generar el QR</span>'}</div>
+      <div style="width:${Math.round(420*esc)}px;height:${Math.round(364*esc)}px;margin:8px auto 10px;">
+        <div style="width:420px;height:364px;transform:scale(${esc});transform-origin:top left;">${fvTarjetaQrHtml(pat, v, svg)}</div>
+      </div>
       <div style="font-size:10.5px;color:#999;word-break:break-all;margin-bottom:14px;">${url}</div>
       <div style="display:flex;gap:8px;">
         <button onclick="imprimirEtiquetaQr('${pat}')" style="flex:1;padding:11px;border-radius:10px;border:none;background:#CC0000;color:#fff;font-weight:700;font-size:13px;cursor:pointer;">🖨 Imprimir</button>
@@ -3765,6 +3766,23 @@ function mostrarQrUnidad(patente){
       </div>
     </div>`;
   document.body.appendChild(m);
+}
+
+// Tarjeta del QR (mismo diseño que la etiqueta impresa): logo vertical a la izquierda,
+// contorno y patente en negro, leyenda al pie. Tamaño fijo 420x364 px.
+const FV_QR_LEYENDA = 'Excelencia en mantenimiento de flota';
+function fvTarjetaQrHtml(pat, v, svg){
+  const logo = (typeof FREDDY_LOGO!=='undefined') ? FREDDY_LOGO : '';
+  return `<div style="box-sizing:border-box;width:420px;height:364px;border:2px solid #111;border-radius:10px;overflow:hidden;display:flex;align-items:center;background:#fff;font-family:Arial,Helvetica,sans-serif;text-align:center;color:#111;">
+    ${logo?`<div style="flex:0 0 150px;width:150px;height:364px;position:relative;overflow:hidden;"><img src="${logo}" alt="Freddy" style="position:absolute;top:50%;left:50%;width:364px;height:150px;max-width:none;transform:translate(-50%,-50%) rotate(-90deg);"></div>`:''}
+    <div style="flex:1;min-width:0;padding:10px 12px;">
+      <div style="font-size:30px;font-weight:800;letter-spacing:2px;color:#111;line-height:1.1;">${pat}</div>
+      ${v&&v.interno?`<div style="font-size:15px;font-weight:700;color:#333;">Interno ${v.interno}</div>`:''}
+      <div style="font-size:12px;color:#555;margin:2px 0 8px;line-height:1.2;">${v?(v.vehiculo+' · '+(v.año||'')):''}</div>
+      <div style="width:214px;height:214px;margin:0 auto;">${svg||'<span style="color:#999;font-size:12px;">No se pudo generar el QR</span>'}</div>
+      <div style="font-size:11px;color:#333;font-weight:700;font-style:italic;margin-top:6px;">${FV_QR_LEYENDA}</div>
+    </div>
+  </div>`;
 }
 
 // Imprimir una etiqueta individual (logo + patente + QR)
@@ -3790,7 +3808,7 @@ function imprimirEtiquetaQr(patente){
     +(v&&v.interno?'<div class="int">Interno '+v.interno+'</div>':'')
     +'<div class="mod">'+(v?(v.vehiculo+' · '+(v.año||'')):'')+'</div>'
     +'<div class="qr">'+svg+'</div>'
-    +'<div class="ft">Excelencia en mantenimiento de flota</div>'
+    +'<div class="ft">'+FV_QR_LEYENDA+'</div>'
     +'</div></div>'
     +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}<\/scr'+'ipt>'
     +'</body></html>');
@@ -3815,13 +3833,13 @@ function openQrFlota(){
   win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>QR Flota Vicuña</title>'
     +'<style>@page{size:A4;margin:9mm;}body{font-family:Arial,Helvetica,sans-serif;color:#111;}'
     +'.hd{display:flex;align-items:center;gap:10px;margin-bottom:10px;}.hd img{height:28px;}.hd h1{font-size:14px;margin:0;}'
-    +'.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}'
-    +'.cel{border:1px solid #111;border-radius:8px;height:166px;overflow:hidden;text-align:center;page-break-inside:avoid;break-inside:avoid;display:flex;align-items:center;}'
-    +'.dat{flex:1;min-width:0;padding:6px;}'
-    +'.lgv{flex:0 0 69px;width:69px;height:166px;position:relative;overflow:hidden;}'
-    +'.lgv img{position:absolute;top:50%;left:50%;width:166px;height:69px;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
-    +'.pat{font-size:13px;font-weight:800;color:#111;letter-spacing:1px;}.int{font-size:10px;color:#333;font-weight:700;}'
-    +'.qr{width:115px;height:115px;margin:3px auto;}.mod{font-size:7.5px;color:#666;line-height:1.1;height:17px;overflow:hidden;}</style></head><body>'
+    +'.grid{display:grid;grid-template-columns:repeat(6,30.3mm);gap:2mm;}'
+    +'.cel{box-sizing:border-box;border:0.3mm solid #111;border-radius:1.5mm;width:30.3mm;height:22mm;overflow:hidden;text-align:center;page-break-inside:avoid;break-inside:avoid;display:flex;align-items:center;}'
+    +'.dat{flex:1;min-width:0;padding:0.5mm;}'
+    +'.lgv{flex:0 0 9.1mm;width:9.1mm;height:22mm;position:relative;overflow:hidden;}'
+    +'.lgv img{position:absolute;top:50%;left:50%;width:22mm;height:9.1mm;transform:translate(-50%,-50%) rotate(-90deg);-webkit-print-color-adjust:exact;print-color-adjust:exact;}'
+    +'.pat{font-size:7.5px;font-weight:800;color:#111;letter-spacing:.4px;line-height:1.1;white-space:nowrap;}.int{font-size:5.5px;color:#333;font-weight:700;letter-spacing:0;}'
+    +'.qr{width:15.4mm;height:15.4mm;margin:0.2mm auto 0.4mm;}.mod{font-size:4px;color:#444;line-height:2mm;height:2mm;overflow:hidden;white-space:nowrap;}</style></head><body>'
     +'<div class="hd">'+(logo?'<img src="'+logo+'">':'')+'<h1>Códigos QR — Flota Vicuña ('+FLOTA_VICUNA.length+' unidades)</h1></div>'
     +'<div class="grid">'+celdas+'</div>'
     +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},500);}<\/scr'+'ipt>'
@@ -3829,30 +3847,65 @@ function openQrFlota(){
   win.document.close();
 }
 
-// Descargar el QR de una unidad como PNG
+// Descargar la tarjeta del QR de una unidad como PNG (logo + patente + QR + leyenda)
 function descargarQrPng(patente){
   if(typeof qrcode==='undefined'){ alert('La librería de QR aún no cargó.'); return; }
   const v = (typeof flotaBuscar==='function') ? flotaBuscar(patente) : null;
   const pat = v ? v.patente : String(patente||'').toUpperCase();
-  let svg='';
-  try{ const qr=qrcode(0,'M'); qr.addData(fvQrUrl(pat)); qr.make(); svg=qr.createSvgTag({cellSize:10,margin:2}); }
+  let qr;
+  try{ qr=qrcode(0,'M'); qr.addData(fvQrUrl(pat)); qr.make(); }
   catch(e){ alert('No se pudo generar el QR'); return; }
-  const blob = new Blob([svg], {type:'image/svg+xml;charset=utf-8'});
-  const u = URL.createObjectURL(blob);
-  const img = new Image();
-  img.onload = function(){
-    const size = img.width || 334;
-    const cv = document.createElement('canvas'); cv.width=size; cv.height=size;
-    const ctx = cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,size,size);
-    ctx.drawImage(img,0,0,size,size);
-    URL.revokeObjectURL(u);
+  const K = 3, W = 420*K, H = 364*K, LW = 150*K;     // misma proporción que la tarjeta en pantalla
+  const cv = document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx = cv.getContext('2d');
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  function dibujar(logoImg){
+    const R = 10*K, B = 2*K;
+    ctx.save(); rr(0,0,W,H,R); ctx.clip();
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+    let x0 = 0;
+    if(logoImg){
+      ctx.save(); ctx.translate(LW/2, H/2); ctx.rotate(-Math.PI/2);
+      ctx.drawImage(logoImg, -H/2, -LW/2, H, LW); ctx.restore();
+      x0 = LW;
+    }
+    const cx = x0 + (W-x0)/2;
+    ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+    let y = 52*K;
+    ctx.fillStyle='#111'; ctx.font='800 '+(30*K)+'px Arial, Helvetica, sans-serif';
+    try{ ctx.letterSpacing = (2*K)+'px'; }catch(e){}
+    ctx.fillText(pat, cx, y);
+    try{ ctx.letterSpacing = '0px'; }catch(e){}
+    if(v && v.interno){ y += 20*K; ctx.fillStyle='#333'; ctx.font='700 '+(15*K)+'px Arial, Helvetica, sans-serif'; ctx.fillText('Interno '+v.interno, cx, y); }
+    if(v){
+      ctx.fillStyle='#555'; ctx.font=(12*K)+'px Arial, Helvetica, sans-serif';
+      const maxW = W - x0 - 24*K, pal = (v.vehiculo+' · '+(v.año||'')).split(' ');
+      let lin='', lineas=[];
+      pal.forEach(p=>{ const t = lin ? lin+' '+p : p; if(ctx.measureText(t).width > maxW && lin){ lineas.push(lin); lin=p; } else lin=t; });
+      if(lin) lineas.push(lin);
+      lineas.slice(0,2).forEach(l=>{ y += 15*K; ctx.fillText(l, cx, y); });
+    }
+    // QR
+    const n = qr.getModuleCount(), margen = 2, lado = 210*K, cel = Math.floor(lado/(n+margen*2));
+    const real = cel*(n+margen*2), qx = Math.round(cx - real/2), qy = y + 10*K;
+    ctx.fillStyle='#000';
+    for(let r=0;r<n;r++) for(let c=0;c<n;c++) if(qr.isDark(r,c)) ctx.fillRect(qx+(c+margen)*cel, qy+(r+margen)*cel, cel, cel);
+    ctx.fillStyle='#333'; ctx.font='italic 700 '+(11*K)+'px Arial, Helvetica, sans-serif';
+    ctx.fillText(FV_QR_LEYENDA, cx, Math.min(H-12*K, qy+real+16*K));
+    ctx.restore();
+    ctx.lineWidth = B; ctx.strokeStyle='#111'; rr(B/2,B/2,W-B,H-B,R-B/2); ctx.stroke();
     cv.toBlob(function(b){
+      if(!b){ alert('No se pudo generar el PNG. Usá "Imprimir".'); return; }
       const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='QR_'+pat+'.png'; a.click();
       setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
     }, 'image/png');
-  };
-  img.onerror = function(){ URL.revokeObjectURL(u); alert('No se pudo convertir a PNG. Usá "Imprimir".'); };
-  img.src = u;
+  }
+  const src = (typeof FREDDY_LOGO!=='undefined') ? FREDDY_LOGO : '';
+  if(!src){ dibujar(null); return; }
+  const img = new Image();
+  img.onload = function(){ dibujar(img); };
+  img.onerror = function(){ dibujar(null); };
+  img.src = src;
 }
 
 // Abrir automáticamente la ficha de una unidad si la app se abrió desde un QR (?u=PATENTE)
