@@ -970,7 +970,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v70';
+const APP_VERSION = 'v71';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -3584,6 +3584,7 @@ function otHistorial(patente){
         ${_btnCargar}
         <button onclick="mostrarQrUnidad('${patente}')" style="flex:${_btnCargar?'0 0 auto':'1'};padding:11px 16px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-weight:700;font-size:13px;cursor:pointer;">▦ Código QR</button>
       </div>
+      ${(typeof fvProximoPMHtml==='function') ? fvProximoPMHtml(patente, 'background:var(--card);border:1px solid var(--border);border-radius:12px;') : ''}
       ${rows}
     </div>`;
   document.body.appendChild(modal);
@@ -3767,6 +3768,65 @@ function fvFechaLinda(iso){
   if(!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso||'';
   const p = iso.slice(0,10).split('-'); return p[2]+'/'+p[1]+'/'+p[0];
 }
+
+// Km del próximo PM de una unidad: km del último PM registrado + intervalo (5.000 km).
+// Fuentes con km: OT importadas de tipo PM y turnos PM cerrados. Si la unidad no tiene
+// ningún PM con km, se estima con el próximo múltiplo de 5.000 sobre la última lectura.
+const FV_INTERVALO_PM = 5000;
+function fvProximoPM(patente){
+  const v = (typeof flotaBuscar==='function') ? flotaBuscar(patente) : null;
+  const pats = [patente]; if(v && v.previa) pats.push(v.previa);
+  let ultPM = null, kmActual = 0, fechaKm = '';
+  const lectura = (km, fecha) => { km = Number(km)||0; if(km > kmActual){ kmActual = km; fechaKm = fecha||''; } };
+  pats.forEach(p=>{
+    ((typeof otData!=='undefined' && otData && otData[p]) || []).forEach(o=>{
+      const km = Number(o.km_efectivo)||0; const f = (o.fecha_iso && /^\d{4}-\d{2}-\d{2}$/.test(o.fecha_iso)) ? o.fecha_iso : '';
+      lectura(km, f);
+      if(o.tipo==='PM' && km>0 && (!ultPM || km > ultPM.km)) ultPM = { km, fecha: f };
+    });
+  });
+  (Array.isArray(events) ? events : []).forEach(e=>{
+    if(pats.indexOf(e.dom) === -1) return;
+    const km = Number(e.kmA)||0; lectura(km, e.fecha);
+    const esPM = e.pm==='PM5' || e.pm==='PM10';
+    if(esPM && (e.cumplido || e.origenOT) && km>0 && (!ultPM || km > ultPM.km)) ultPM = { km, fecha: e.fecha||'' };
+  });
+  if(ultPM){
+    const prox = ultPM.km + FV_INTERVALO_PM;
+    return { km: prox, estimado:false, ultPM, kmActual, fechaKm, faltan: prox - kmActual };
+  }
+  if(kmActual > 0){
+    const prox = (Math.floor(kmActual / FV_INTERVALO_PM) + 1) * FV_INTERVALO_PM;
+    return { km: prox, estimado:true, ultPM:null, kmActual, fechaKm, faltan: prox - kmActual };
+  }
+  return null;
+}
+function fvProximoPMHtml(patente, estiloCard){
+  const p = fvProximoPM(patente);
+  const N = n => Number(n).toLocaleString('es-AR');
+  const base = (estiloCard||'') + 'padding:14px 16px;margin-bottom:12px;';
+  if(!p){
+    return `<div style="${base}border-left:4px solid #8E8E93;">
+      <div style="font-size:11px;color:var(--text3,#888);font-weight:700;letter-spacing:.04em;">PRÓXIMO PM</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text,#fff);margin-top:3px;">Sin lectura de km registrada</div>
+      <div style="font-size:12px;color:var(--text2,#bbb);margin-top:3px;">Se calcula cuando la unidad tenga su primera intervención con kilometraje.</div>
+    </div>`;
+  }
+  const color = p.faltan <= 0 ? '#FF3B30' : (p.faltan <= 500 ? '#FF9500' : '#34C759');
+  const estado = p.faltan <= 0 ? `PM vencido por ${N(-p.faltan)} km` : `Faltan ${N(p.faltan)} km`;
+  const detalle = p.estimado
+    ? `Estimado: sin PM registrado con km · última lectura ${N(p.kmActual)} km`
+    : `Último PM: ${N(p.ultPM.km)} km${p.ultPM.fecha?(' ('+fvFechaLinda(p.ultPM.fecha)+')'):''}`;
+  return `<div style="${base}border-left:4px solid ${color};">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
+      <span style="font-size:11px;color:var(--text3,#888);font-weight:700;letter-spacing:.04em;">PRÓXIMO PM</span>
+      <span style="font-size:12px;font-weight:700;color:${color};">${estado}</span>
+    </div>
+    <div style="font-size:26px;font-weight:800;color:var(--text,#fff);margin-top:2px;line-height:1.15;">${N(p.km)} km</div>
+    <div style="font-size:12px;color:var(--text2,#bbb);margin-top:4px;">${detalle}</div>
+    ${(!p.estimado && p.kmActual > p.ultPM.km) ? `<div style="font-size:11.5px;color:var(--text3,#888);margin-top:2px;">Última lectura: ${N(p.kmActual)} km${p.fechaKm?(' ('+fvFechaLinda(p.fechaKm)+')'):''}</div>` : ''}
+  </div>`;
+}
 function fvFichaPublica(patente){
   window._fvQrPublico = patente;
   window._fvQrInicio = Date.now();
@@ -3873,7 +3933,7 @@ function fvFichaPublicaRender(){
         </div>`;
       });
     }
-    cuerpo = prox + resumen + `<div style="font-size:11px;color:var(--text3,#888);font-weight:700;letter-spacing:.04em;margin:0 2px 8px;">HISTORIAL DE INTERVENCIONES</div>` + hist;
+    cuerpo = fvProximoPMHtml(patente, card) + prox + resumen + `<div style="font-size:11px;color:var(--text3,#888);font-weight:700;letter-spacing:.04em;margin:0 2px 8px;">HISTORIAL DE INTERVENCIONES</div>` + hist;
   }
 
   ov.innerHTML = `
