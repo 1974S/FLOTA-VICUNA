@@ -19,6 +19,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <title>Flota Vicuña</title>
 <style>
@@ -869,6 +870,7 @@ whenAuthReady(()=> refTurnos.on('value', snap => {
     nid = 1;
   }
   try { localStorage.setItem('tf_vicuna_v1', JSON.stringify(events)); } catch(e) {}
+  window._fvTurnosListo = true;
   try{ render(); }catch(e){ console.error('Error en render() (listener turnos):', e); }
 }));
 
@@ -967,7 +969,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v68';
+const APP_VERSION = 'v69';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1252,6 +1254,7 @@ function renderFlota(c) {
   c.innerHTML = `
     <div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between;">
       <span>Flota Vicuña — ${FLOTA_VICUNA.length} unidades</span>
+      <button onclick="openQrFlota()" style="background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">▦ Hoja de QR</button>
     </div>
     <div style="padding:0 16px 8px;">
       <input class="fi" id="flotaBusq" placeholder="Buscar patente, interno, modelo..." autocomplete="off"
@@ -1821,7 +1824,7 @@ function calcKm() {
   }
 }
 
-function openAdd() {
+function openAdd(patenteInicial) {
   ['fDom','fKmA','fKmU','fTec','fAceite','fObs'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   document.getElementById('fDomInfo').textContent = '';
   initFlotaDatalist();
@@ -1836,6 +1839,10 @@ function openAdd() {
   document.getElementById('addOverlay').classList.add('open');
   document.getElementById('addSheet').classList.add('open');
   document.body.style.overflow = 'hidden';
+  if (patenteInicial) {
+    const _fd = document.getElementById('fDom');
+    if (_fd) { _fd.value = String(patenteInicial).toUpperCase(); if (typeof onDomInput==='function') onDomInput(_fd.value); }
+  }
   setTimeout(() => document.getElementById('fDom').focus(), 350);
 }
 
@@ -2240,7 +2247,7 @@ function otMigrarPatentes(){
 function otBindFirebase(){
   try {
     whenAuthReady(()=> db.ref('ordenes_trabajo').on('value', snap => {
-      const v = snap.val();
+      const v = snap.val(); window._fvOtListo = true;
       if(v){ otData = v; otMigrarPatentes(); otSaveLocal(); otAutoLimpiar(); if(curTab==='inicio'||curTab==='flota') render(); }
     }));
   } catch(e){ console.warn('OT firebase', e); }
@@ -3528,6 +3535,7 @@ function otConfirmImport(){
 /* ---------- Historial por unidad ---------- */
 function otHistorial(patente){
   const hist = (otData[patente]||[]).slice().sort((a,b)=>(a.km_efectivo||0)-(b.km_efectivo||0));
+  const vUnidad = (typeof flotaBuscar==='function') ? flotaBuscar(patente) : null;
   const modal=document.createElement('div');
   modal.id='histModal';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;';
@@ -3558,16 +3566,185 @@ function otHistorial(patente){
         </div>`;
     });
   }
+  const _vinfo = vUnidad ? `${vUnidad.vehiculo} · ${vUnidad.año||''}${vUnidad.area?(' · '+vUnidad.area):''}` : '';
+  const _puedeCargar = !(typeof soloLectura==='function' && soloLectura());
+  const _btnCargar = _puedeCargar
+    ? `<button onclick="document.getElementById('histModal').remove(); openAdd('${patente}');" style="flex:1;padding:11px;border-radius:10px;border:none;background:var(--red);color:#fff;font-weight:700;font-size:13px;cursor:pointer;">＋ Cargar turno</button>`
+    : '';
   modal.innerHTML=`
     <div style="background:var(--bg);width:100%;max-width:640px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px 30px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-        <span style="font-size:17px;font-weight:700;">Historial — ${patente}</span>
-        <button onclick="document.getElementById('histModal').remove()" style="background:none;border:none;font-size:22px;color:var(--text2);">✕</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+        <span style="font-size:17px;font-weight:700;">${patente}${vUnidad&&vUnidad.interno?` <span style="color:var(--red);font-size:13px;">${vUnidad.interno}</span>`:''}</span>
+        <button onclick="document.getElementById('histModal').remove()" style="background:none;border:none;font-size:22px;color:var(--text2);cursor:pointer;">✕</button>
+      </div>
+      ${_vinfo?`<div style="font-size:12px;color:var(--text2);margin-bottom:12px;">${_vinfo}</div>`:'<div style="margin-bottom:12px;"></div>'}
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        ${_btnCargar}
+        <button onclick="mostrarQrUnidad('${patente}')" style="flex:${_btnCargar?'0 0 auto':'1'};padding:11px 16px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-weight:700;font-size:13px;cursor:pointer;">▦ Código QR</button>
       </div>
       ${rows}
     </div>`;
   document.body.appendChild(modal);
 }
+
+
+/* ========================= CÓDIGOS QR POR UNIDAD ==========================
+   Cada unidad de la flota tiene un QR que abre su ficha (historial + botón
+   para cargar turno). Se puede ver/descargar individual o imprimir la hoja
+   completa de la flota. Usa la librería global `qrcode` (qrcode-generator). */
+
+function fvBaseUrl(){
+  let u = location.origin + location.pathname;
+  u = u.replace(/index\.html$/i,'');
+  if(!u.endsWith('/')) u += '/';
+  return u;
+}
+function fvQrUrl(patente){
+  return fvBaseUrl() + '?u=' + encodeURIComponent(String(patente||'').toUpperCase());
+}
+function fvQrSvg(text, cell, margin, scalable){
+  if(typeof qrcode==='undefined') return '';
+  try{
+    const qr = qrcode(0,'M'); qr.addData(String(text)); qr.make();
+    return qr.createSvgTag({cellSize: cell||4, margin: (margin==null?2:margin), scalable: !!scalable});
+  }catch(e){ console.warn('fvQrSvg', e); return ''; }
+}
+
+// Modal con el QR de una unidad (ver + imprimir + descargar)
+function mostrarQrUnidad(patente){
+  const v = (typeof flotaBuscar==='function') ? flotaBuscar(patente) : null;
+  const pat = v ? v.patente : String(patente||'').toUpperCase();
+  const url = fvQrUrl(pat);
+  const svg = fvQrSvg(url, 6, 2, true);
+  const sub = v ? `${v.vehiculo} · ${v.año||''}${v.interno?(' · Interno '+v.interno):''}` : '';
+  const m = document.createElement('div');
+  m.id='qrUnidadModal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px;';
+  m.innerHTML = `
+    <div style="background:#fff;border-radius:16px;max-width:360px;width:100%;padding:22px;text-align:center;color:#111;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:16px;font-weight:800;color:#111;">Código QR</span>
+        <button onclick="document.getElementById('qrUnidadModal').remove()" style="background:none;border:none;font-size:22px;color:#888;cursor:pointer;line-height:1;">✕</button>
+      </div>
+      <div style="font-size:20px;font-weight:800;color:#CC0000;letter-spacing:.04em;">${pat}${v&&v.interno?` <span style="color:#444;font-size:14px;">${v.interno}</span>`:''}</div>
+      ${sub?`<div style="font-size:12px;color:#555;margin-bottom:12px;">${sub}</div>`:'<div style="margin-bottom:12px;"></div>'}
+      <div style="width:220px;height:220px;margin:0 auto 12px;background:#fff;display:flex;align-items:center;justify-content:center;">${svg||'<span style="color:#999;font-size:12px;">No se pudo generar el QR</span>'}</div>
+      <div style="font-size:10.5px;color:#999;word-break:break-all;margin-bottom:14px;">${url}</div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="imprimirEtiquetaQr('${pat}')" style="flex:1;padding:11px;border-radius:10px;border:none;background:#CC0000;color:#fff;font-weight:700;font-size:13px;cursor:pointer;">🖨 Imprimir</button>
+        <button onclick="descargarQrPng('${pat}')" style="flex:1;padding:11px;border-radius:10px;border:1px solid #ccc;background:#f5f5f5;color:#111;font-weight:700;font-size:13px;cursor:pointer;">⬇ PNG</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+// Imprimir una etiqueta individual (logo + patente + QR)
+function imprimirEtiquetaQr(patente){
+  const v = (typeof flotaBuscar==='function') ? flotaBuscar(patente) : null;
+  const pat = v ? v.patente : String(patente||'').toUpperCase();
+  const url = fvQrUrl(pat);
+  const svg = fvQrSvg(url, 8, 2, true);
+  const logo = (typeof FREDDY_LOGO!=='undefined') ? FREDDY_LOGO : '';
+  const win = window.open('', '_blank');
+  if(!win){ alert('Permití las ventanas emergentes para imprimir la etiqueta.'); return; }
+  win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>QR '+pat+'</title>'
+    +'<style>@page{size:auto;margin:12mm;}body{font-family:Arial,Helvetica,sans-serif;text-align:center;color:#111;}'
+    +'.etq{border:2px solid #CC0000;border-radius:10px;padding:16px;width:300px;margin:0 auto;}'
+    +'.logo{height:36px;margin-bottom:8px;}.pat{font-size:30px;font-weight:800;letter-spacing:2px;color:#CC0000;}'
+    +'.int{font-size:15px;font-weight:700;color:#333;}.mod{font-size:12px;color:#555;margin:2px 0 10px;}'
+    +'.qr{width:220px;height:220px;margin:0 auto;}.ft{font-size:10px;color:#999;margin-top:8px;}</style></head><body>'
+    +'<div class="etq">'
+    +(logo?'<img class="logo" src="'+logo+'">':'')
+    +'<div class="pat">'+pat+'</div>'
+    +(v&&v.interno?'<div class="int">Interno '+v.interno+'</div>':'')
+    +'<div class="mod">'+(v?(v.vehiculo+' · '+(v.año||'')):'')+'</div>'
+    +'<div class="qr">'+svg+'</div>'
+    +'<div class="ft">Escaneá para ver el historial de la unidad</div>'
+    +'</div>'
+    +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},300);}<\/scr'+'ipt>'
+    +'</body></html>');
+  win.document.close();
+}
+
+// Hoja imprimible con el QR de TODA la flota
+function openQrFlota(){
+  if(typeof qrcode==='undefined'){ alert('La librería de QR aún no cargó. Esperá unos segundos y reintentá.'); return; }
+  const logo = (typeof FREDDY_LOGO!=='undefined') ? FREDDY_LOGO : '';
+  const win = window.open('', '_blank');
+  if(!win){ alert('Permití las ventanas emergentes para imprimir la hoja de QR.'); return; }
+  let celdas = '';
+  FLOTA_VICUNA.forEach(v=>{
+    const svg = fvQrSvg(fvQrUrl(v.patente), 4, 1, true);
+    celdas += '<div class="cel">'
+      +'<div class="pat">'+v.patente+(v.interno?' <span class="int">'+v.interno+'</span>':'')+'</div>'
+      +'<div class="qr">'+svg+'</div>'
+      +'<div class="mod">'+(v.vehiculo||'')+'</div>'
+      +'</div>';
+  });
+  win.document.write('<!doctype html><html><head><meta charset="utf-8"><title>QR Flota Vicuña</title>'
+    +'<style>@page{size:A4;margin:9mm;}body{font-family:Arial,Helvetica,sans-serif;color:#111;}'
+    +'.hd{display:flex;align-items:center;gap:10px;margin-bottom:10px;}.hd img{height:28px;}.hd h1{font-size:14px;margin:0;}'
+    +'.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;}'
+    +'.cel{border:1px solid #CC0000;border-radius:8px;padding:7px;text-align:center;page-break-inside:avoid;}'
+    +'.pat{font-size:13px;font-weight:800;color:#CC0000;letter-spacing:1px;}.int{font-size:10px;color:#333;font-weight:700;}'
+    +'.qr{width:115px;height:115px;margin:3px auto;}.mod{font-size:7.5px;color:#666;line-height:1.1;height:17px;overflow:hidden;}</style></head><body>'
+    +'<div class="hd">'+(logo?'<img src="'+logo+'">':'')+'<h1>Códigos QR — Flota Vicuña ('+FLOTA_VICUNA.length+' unidades)</h1></div>'
+    +'<div class="grid">'+celdas+'</div>'
+    +'<scr'+'ipt>window.onload=function(){setTimeout(function(){window.print();},500);}<\/scr'+'ipt>'
+    +'</body></html>');
+  win.document.close();
+}
+
+// Descargar el QR de una unidad como PNG
+function descargarQrPng(patente){
+  if(typeof qrcode==='undefined'){ alert('La librería de QR aún no cargó.'); return; }
+  const v = (typeof flotaBuscar==='function') ? flotaBuscar(patente) : null;
+  const pat = v ? v.patente : String(patente||'').toUpperCase();
+  let svg='';
+  try{ const qr=qrcode(0,'M'); qr.addData(fvQrUrl(pat)); qr.make(); svg=qr.createSvgTag({cellSize:10,margin:2}); }
+  catch(e){ alert('No se pudo generar el QR'); return; }
+  const blob = new Blob([svg], {type:'image/svg+xml;charset=utf-8'});
+  const u = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = function(){
+    const size = img.width || 334;
+    const cv = document.createElement('canvas'); cv.width=size; cv.height=size;
+    const ctx = cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,size,size);
+    ctx.drawImage(img,0,0,size,size);
+    URL.revokeObjectURL(u);
+    cv.toBlob(function(b){
+      const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='QR_'+pat+'.png'; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+    }, 'image/png');
+  };
+  img.onerror = function(){ URL.revokeObjectURL(u); alert('No se pudo convertir a PNG. Usá "Imprimir".'); };
+  img.src = u;
+}
+
+// Abrir automáticamente la ficha de una unidad si la app se abrió desde un QR (?u=PATENTE)
+function fvAbrirDesdeQR(){
+  try{
+    const params = new URLSearchParams(location.search);
+    let pat = params.get('u') || params.get('unidad') || params.get('patente');
+    if(!pat) return;
+    pat = decodeURIComponent(pat).replace(/\s+/g,'').toUpperCase();
+    const v = (typeof flotaBuscar==='function') ? flotaBuscar(pat) : null;
+    const patValida = v ? v.patente : null;
+    if(!patValida) return;
+    try{ history.replaceState({}, '', fvBaseUrl()); }catch(e){}
+    let intentos = 0;
+    (function esperar(){
+      intentos++;
+      const dataLista = window._fvOtListo || window._fvTurnosListo;
+      if(dataLista || intentos > 18){
+        if(typeof otHistorial==='function' && !document.getElementById('histModal')) otHistorial(patValida);
+      } else {
+        setTimeout(esperar, 400);
+      }
+    })();
+  }catch(e){ console.warn('fvAbrirDesdeQR', e); }
+}
+/* ======================= FIN CÓDIGOS QR POR UNIDAD ======================== */
 
 /* ---------- Gráficos del Inicio ---------- */
 function otRenderGraficos(){
@@ -5458,6 +5635,7 @@ function aplicarRol(){
       add.parentElement.insertBefore(lo, add.nextSibling);
     }
   }
+  try{ setTimeout(fvAbrirDesdeQR, 500); }catch(e){}
 }
 
 /* ── Guardias de solo lectura ──────────────────────────────────────────────
