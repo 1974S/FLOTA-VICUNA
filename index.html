@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#CC0000">
+<meta name="theme-color" content="#0B2256">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Flota Vicuña">
@@ -21,6 +21,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
 <title>Flota Vicuña</title>
 <style>
 /* ─── VARIABLES ───────────────────────────── */
@@ -572,6 +575,118 @@ body[data-role="supervisor_vicuna"] .fab,
 body[data-role="supervisor_vicuna"] #dCerrarBtn,
 body[data-role="supervisor_vicuna"] #dDelBtn,
 body[data-role="supervisor_vicuna"] input[type="file"]{ display:none !important; }
+
+/* ═══════════════════ TEMA HUD (mismo estilo que Productividad Vicuña) ═══════════════════
+   Capa visual: azul noche, acentos celestes con brillo, tarjetas con esquina marcada.
+   No cambia ninguna función. Los impresos (QR, PDF, presupuestos) conservan el rojo FREDDY. */
+:root {
+  color-scheme: dark;
+  --red:    #1E90FF;   /* color de acento de la app (antes rojo) */
+  --red-d:  #1670CC;
+  --red-l:  #5CC8FF;
+  --cyan:   #35D6FF;
+  --bg:     #050E24;
+  --card:   #0B1D45;
+  --border: #1C3F7C;
+  --text:   #EAF4FF;
+  --text2:  #A9C1E6;
+  --text3:  #6C8AB8;
+  --hud-head: linear-gradient(180deg, #0B2256 0%, #081A3E 100%);
+  --hud-card: linear-gradient(180deg, rgba(20,52,116,.55) 0%, rgba(8,24,60,.35) 100%);
+  --hud-num: 'Orbitron', 'Rajdhani', 'Segoe UI', -apple-system, sans-serif;
+}
+body {
+  background: radial-gradient(1100px 620px at 50% -8%, #10306E 0%, #071736 46%, #040B1D 100%) fixed #050E24;
+}
+* { scrollbar-width: thin; scrollbar-color: #1C4E9E transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #1C4E9E; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+select option { background: #0A1B40; color: #EAF4FF; }
+
+/* Encabezado y pestañas */
+.status-bar { background: #0B2256; }
+.navbar { background: var(--hud-head); border-bottom: 1px solid rgba(53,214,255,.22); box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.tabbar { background: transparent; }
+.brand-icon { background: rgba(53,214,255,.10); border: 1px solid rgba(53,214,255,.45); box-shadow: 0 0 12px rgba(53,214,255,.25); }
+.brand-title { font-family: var(--hud-num); text-transform: uppercase; letter-spacing: .07em; font-size: 16px; font-weight: 800; }
+.brand-sub { opacity: .8; color: #BFD6F5; }
+.btn-add-nav, #logoutBtn {
+  background: rgba(30,144,255,.16) !important; border: 1.5px solid rgba(53,214,255,.7) !important;
+  color: #CFF3FF; box-shadow: 0 0 12px rgba(53,214,255,.28);
+}
+.btn-add-nav:active { background: rgba(53,214,255,.3) !important; }
+.tab-btn { text-transform: uppercase; letter-spacing: .09em; font-size: 11.5px; font-weight: 600; color: rgba(190,214,250,.62); padding: 10px 4px; }
+.tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); text-shadow: 0 0 10px rgba(53,214,255,.55); }
+
+/* Tarjetas */
+.kpi-card, .mini-cal, .ev-card, .plan-card, .searchbar,
+.content div[style*="background:var(--card)"],
+#histModal div[style*="background:var(--card)"] {
+  background-image: var(--hud-card) !important;
+  border-color: rgba(64,134,235,.38) !important;
+  box-shadow: inset 0 0 0 1px rgba(53,214,255,.03), 0 0 18px rgba(18,84,196,.14);
+}
+.kpi-card, .mini-cal, .plan-card,
+.content div[style*="background:var(--card)"]:not([style*="position"]) { position: relative; }
+.kpi-card::before, .mini-cal::before, .plan-card::before,
+.content div[style*="background:var(--card)"]:not([style*="position"])::before {
+  content: ''; position: absolute; top: -1px; left: -1px; width: 13px; height: 13px;
+  border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan);
+  border-top-left-radius: 10px; pointer-events: none; opacity: .9;
+}
+.ev-card:active { opacity: .8; }
+
+/* Indicadores */
+.kpi-num { font-family: var(--hud-num); font-weight: 800; letter-spacing: .02em; }
+.kpi-lbl { text-transform: uppercase; letter-spacing: .07em; color: #9DB7E0; font-size: 9px; margin-top: 5px; }
+.kpi-blue   .kpi-num { color: #38BDFF; text-shadow: 0 0 14px rgba(56,189,255,.45); }
+.kpi-green  .kpi-num { color: #2EE6A6; text-shadow: 0 0 14px rgba(46,230,166,.40); }
+.kpi-orange .kpi-num { color: #FFB23E; text-shadow: 0 0 14px rgba(255,178,62,.40); }
+.kpi-red    .kpi-num { color: #FF6259; text-shadow: 0 0 14px rgba(255,98,89,.40); }
+.sec-hdr { color: #CFE4FF; letter-spacing: .08em; }
+
+/* Etiquetas */
+.pm1 { background: rgba(0,122,255,.20);  color: #7CC0FF; }
+.pm2 { background: rgba(52,199,89,.18);  color: #5FE08A; }
+.pm3 { background: rgba(255,149,0,.18);  color: #FFB95C; }
+.pm4 { background: rgba(255,59,48,.18);  color: #FF8279; }
+.pm5 { background: rgba(120,100,255,.22);color: #B3A6FF; }
+.pm6 { background: rgba(50,220,190,.16); color: #5CE6CD; }
+.pm7 { background: rgba(255,107,0,.18);  color: #FFA366; }
+.pm8 { background: rgba(255,45,85,.18);  color: #FF8AA6; }
+.st-ok    { background: rgba(52,199,89,.18);  color: #5FE08A; }
+.st-cumpl { background: rgba(53,214,255,.16); color: #6FDFFF; }
+.st-prox  { background: rgba(255,149,0,.18);  color: #FFB95C; }
+.st-venc  { background: rgba(255,59,48,.18);  color: #FF8279; }
+
+/* Calendario */
+.mc-title { letter-spacing: .02em; }
+.mc-btn { background: rgba(30,144,255,.12); border-color: rgba(64,134,235,.45); color: #BFE4FF; }
+.mc-day.today { background: var(--red); box-shadow: 0 0 14px rgba(30,144,255,.65); }
+.mc-day.sel:not(.today) { background: rgba(53,214,255,.14); border-color: var(--cyan); color: var(--cyan); }
+.dot-red   { background: #FF453A; }   /* pendiente: sigue rojo */
+.dot-cumpl { background: #38BDFF; }
+
+/* Botones y formularios */
+.fab { background: linear-gradient(180deg, #2FA8FF 0%, #1670CC 100%); box-shadow: 0 0 24px rgba(47,168,255,.6), 0 4px 14px rgba(0,0,0,.4); }
+.btn-primary { background: linear-gradient(180deg, #2FA8FF 0%, #1873D1 100%); box-shadow: 0 0 16px rgba(47,168,255,.35); }
+.btn-secondary { background: rgba(30,144,255,.08); color: #BFD6F5; border-color: rgba(64,134,235,.45); }
+.btn-danger { background: rgba(255,69,58,.14); color: #FF8279; border-color: rgba(255,69,58,.45); }
+.btn-danger:active { background: rgba(255,69,58,.26); }
+.overlay { background: rgba(2,8,22,.66); }
+.sheet { background: #0A1B40; border-top: 1px solid rgba(53,214,255,.4); box-shadow: 0 -10px 40px rgba(0,0,0,.5); }
+.sheet-handle { background: rgba(53,214,255,.45); }
+.sheet-close, .obs-block, .plan-note, .svc-info { background: rgba(4,14,36,.55); }
+.fi, .fs, .fta { background-color: rgba(4,14,36,.72); border-color: rgba(64,134,235,.45); }
+.fi:focus, .fs:focus, .fta:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(53,214,255,.14); }
+.alert-warn   { background: rgba(255,170,0,.13);  border-color: rgba(255,190,40,.5);  color: #FFD27A; }
+.alert-danger { background: rgba(255,59,48,.14);  border-color: rgba(255,59,48,.55);  color: #FF9A92; }
+.alert-ok     { background: rgba(52,199,89,.14);  border-color: rgba(52,199,89,.5);   color: #86EBA5; }
+.alert-info   { background: rgba(88,120,255,.16); border-color: rgba(110,140,255,.55); color: #B9C8FF; }
+.task-li::before { color: var(--cyan); }
+.km-bar-track { background: rgba(28,63,124,.7); }
+.det-val, .ev-dom { letter-spacing: .02em; }
 </style>
 </head>
 <body>
@@ -970,7 +1085,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v72';
+const APP_VERSION = 'v73';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -2050,8 +2165,8 @@ if ('serviceWorker' in navigator) {
     if (!habiaControlador || document.getElementById('bannerNuevaVersion')) return;
     const b = document.createElement('div');
     b.id = 'bannerNuevaVersion';
-    b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:100001;background:#CC0000;color:#fff;padding:12px 14px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.4);';
-    b.innerHTML = '<span>Hay una versión nueva de la app</span><button onclick="location.reload()" style="background:#fff;color:#CC0000;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">Actualizar</button>';
+    b.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:100001;background:#1E90FF;color:#fff;box-shadow:0 0 22px rgba(30,144,255,.55);padding:12px 14px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:14px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.4);';
+    b.innerHTML = '<span>Hay una versión nueva de la app</span><button onclick="location.reload()" style="background:#fff;color:#0B3B8C;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">Actualizar</button>';
     document.body.appendChild(b);
   });
 }
@@ -3792,7 +3907,7 @@ function fvProximoPM(patente){
   });
   (Array.isArray(events) ? events : []).forEach(e=>{
     if(pats.indexOf(e.dom) === -1) return;
-    const km = Number(e.kmA)||0; lectura(km, e.fecha);
+    const km = Number(e.kmA)||0; lectura(km, (e.cumplido || e.origenOT) ? e.fecha : ''); // un turno pendiente aporta el km, no la fecha
     const esPM = e.pm==='PM5' || e.pm==='PM10';
     if(esPM && (e.cumplido || e.origenOT) && km>0 && (!ultPM || km > ultPM.km)) ultPM = { km, fecha: e.fecha||'' };
   });
@@ -3942,7 +4057,7 @@ function fvFichaPublicaRender(){
   }
 
   ov.innerHTML = `
-    <div style="background:var(--red,#CC0000);padding:16px 16px 18px;color:#fff;">
+    <div style="background:var(--hud-head,#0B2256);border-bottom:1px solid rgba(53,214,255,.3);padding:16px 16px 18px;color:#fff;">
       <div style="max-width:640px;margin:0 auto;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
           ${logo?`<img src="${logo}" alt="Freddy" style="height:26px;border-radius:3px;">`:'<span style="font-weight:800;">FREDDY</span>'}
@@ -4313,7 +4428,7 @@ function renderDashboard(c) {
   let filas = '';
   mesesEvol.forEach(m=>{
     const i = m.ind;
-    filas += `<tr style="border-bottom:1px solid var(--border);${m.esActual?'background:rgba(204,0,0,0.08);':''}">
+    filas += `<tr style="border-bottom:1px solid var(--border);${m.esActual?'background:rgba(53,214,255,0.10);':''}">
       <td style="padding:7px 8px;font-weight:${m.esActual?'700':'500'};color:var(--text);white-space:nowrap;">${m.nombre}${m.esActual?' *':''}</td>
       <td style="padding:7px 8px;text-align:right;color:var(--text2);">${m.esFuturo?'—':fmtCelda(i.dispPct,'%',2)}</td>
       <td style="padding:7px 8px;text-align:right;color:var(--text2);">${m.esFuturo?'—':fmtCelda(i.mkbfProg,' km')}</td>
@@ -4411,7 +4526,7 @@ function renderDashboard(c) {
     if (m.esFuturo) { filasLugar += `<tr style="border-bottom:1px solid var(--border);"><td style="padding:7px 8px;color:var(--text);">${m.nombre}</td><td style="padding:7px 8px;text-align:right;color:var(--text2);">—</td><td style="padding:7px 8px;text-align:right;color:var(--text2);">—</td><td style="padding:7px 8px;text-align:right;color:var(--text2);">—</td></tr>`; return; }
     const c = contarLugarMes(m.key);
     const ps = pctLugar(c.sede,c.total), pm = pctLugar(c.mina,c.total);
-    filasLugar += `<tr style="border-bottom:1px solid var(--border);${m.esActual?'background:rgba(204,0,0,0.08);':''}">
+    filasLugar += `<tr style="border-bottom:1px solid var(--border);${m.esActual?'background:rgba(53,214,255,0.10);':''}">
       <td style="padding:7px 8px;font-weight:${m.esActual?'700':'500'};color:var(--text);white-space:nowrap;">${m.nombre}${m.esActual?' *':''}</td>
       <td style="padding:7px 8px;text-align:right;color:var(--text2);">${c.total>0 ? fmtPct(ps)+' <span style="color:var(--text3);">('+c.sede+')</span>' : '—'}</td>
       <td style="padding:7px 8px;text-align:right;color:var(--text2);">${c.total>0 ? fmtPct(pm)+' <span style="color:var(--text3);">('+c.mina+')</span>' : '—'}</td>
@@ -4651,7 +4766,7 @@ function renderDashboard(c) {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;">${nUnid}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">Unidades</div></div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;">${repTotal}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">Repuestos</div></div>
   </div>`;
-  html += `<div style="background:linear-gradient(135deg,#CC0000,#990000);border-radius:14px;padding:16px;margin-bottom:12px;color:#fff;">
+  html += `<div style="background:linear-gradient(135deg,#1E90FF,#0B3B8C);box-shadow:0 0 22px rgba(30,144,255,.35);border-radius:14px;padding:16px;margin-bottom:12px;color:#fff;">
     <div style="font-size:12px;opacity:.85;letter-spacing:.04em;">COSTO TOTAL DE MANTENIMIENTO</div>
     <div style="font-size:28px;font-weight:800;margin-top:4px;">USD ${costoTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div>
     <div style="font-size:11px;opacity:.75;margin-top:2px;">Acumulado de todas las OT importadas</div>
@@ -5587,7 +5702,7 @@ function kpiContratoHTML(D){
       </tr></thead><tbody>`;
   meses.forEach(m => {
     const fs = kpiContratoMes(D, m);
-    h += `<tr style="border-bottom:1px solid var(--border);${m.key===kpiMesSel?'background:rgba(204,0,0,0.08);':''}">
+    h += `<tr style="border-bottom:1px solid var(--border);${m.key===kpiMesSel?'background:rgba(53,214,255,0.10);':''}">
       <td style="padding:7px 6px;font-weight:600;color:var(--text);white-space:nowrap;">${m.nombre}${m.esActual?' *':''}</td>
       ${fs.map(f => `<td style="padding:7px 6px;text-align:right;white-space:nowrap;color:${kpiEstadoInfo(f.estado).color};font-weight:600;">${f.valor.replace(' (est.)','*')}</td>`).join('')}
     </tr>`;
