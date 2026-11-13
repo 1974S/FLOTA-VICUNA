@@ -970,7 +970,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v71';
+const APP_VERSION = 'v72';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -3602,8 +3602,13 @@ function fvBaseUrl(){
   if(!u.endsWith('/')) u += '/';
   return u;
 }
+// Dirección FIJA que va adentro de cada QR. No depende de la versión de la app ni del
+// lugar desde donde se genere, así el QR de cada unidad es siempre el mismo y los ya
+// impresos siguen sirviendo después de cualquier cambio. NO modificar: cambiar esta
+// dirección (o renombrar el repositorio) obliga a reimprimir todos los QR.
+const FV_QR_BASE = 'https://1974s.github.io/FLOTA-VICUNA/';
 function fvQrUrl(patente){
-  return fvBaseUrl() + '?u=' + encodeURIComponent(String(patente||'').toUpperCase());
+  return FV_QR_BASE + '?u=' + encodeURIComponent(String(patente||'').toUpperCase());
 }
 function fvQrSvg(text, cell, margin, scalable){
   if(typeof qrcode==='undefined') return '';
