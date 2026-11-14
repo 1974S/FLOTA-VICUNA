@@ -1108,7 +1108,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v84';
+const APP_VERSION = 'v85';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -6102,26 +6102,27 @@ function generarInformeKPIWord(mesKey){
 
 function accesoInit(){
   const finArranque = () => { if(typeof fvBootFin==='function') fvBootFin(); };
-  // recordar sesión en este dispositivo
   const saved = sessionStorage.getItem('fv_role');
-  if(saved === 'admin' || saved === 'supervisor' || saved === 'supervisor_vicuna'){ finArranque(); userRole = saved; aplicarRol(); return; }
-  // Abierta desde un QR sin sesión: ficha de consulta de la unidad, sin pedir PIN
+  const conSesion = (saved === 'admin' || saved === 'supervisor' || saved === 'supervisor_vicuna');
+  const entrar = () => { finArranque(); if(conSesion){ userRole = saved; aplicarRol(); } else mostrarLogin(); };
+
+  // Abierta desde un QR: SIEMPRE se muestra solo el reporte de la unidad (solo lectura, sin botones),
+  // aunque en este dispositivo haya una sesión abierta. Para usar la app hay que abrirla normalmente.
   const _patQr = (typeof fvPatenteDeUrl==='function') ? fvPatenteDeUrl() : null;
   if(_patQr && typeof fvFichaPublica==='function'){ finArranque(); fvFichaPublica(_patQr); return; }
   // QR de una patente que no está en la lista: puede ser una unidad agregada desde la app.
-  // Se espera a que llegue la lista de altas (sigue la pantalla de carga) antes de pedir PIN.
+  // Se espera a que llegue la lista de altas (sigue la pantalla de carga) antes de decidir.
   if(typeof fvPatenteUrlCruda==='function' && fvPatenteUrlCruda() && !window._fvFlotaLista){
     let n = 0;
     const t = setInterval(function(){
       n++;
       const p = fvPatenteDeUrl();
       if(p){ clearInterval(t); finArranque(); fvFichaPublica(p); }
-      else if(window._fvFlotaLista || n > 40){ clearInterval(t); finArranque(); mostrarLogin(); }
+      else if(window._fvFlotaLista || n > 40){ clearInterval(t); entrar(); }
     }, 300);
     return;
   }
-  finArranque();
-  mostrarLogin();
+  entrar();
 }
 
 function mostrarLogin(){
