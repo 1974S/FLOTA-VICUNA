@@ -1108,7 +1108,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v82';
+const APP_VERSION = 'v83';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1121,6 +1121,134 @@ function flotaBuscar(pat){
 function flotaInterno(pat){ const v = flotaBuscar(pat); return (v && v.interno) || ''; }
 // Patente vigente (si venía con una patente anterior, devuelve la corregida)
 function flotaPatenteVigente(pat){ const v = flotaBuscar(pat); return v ? v.patente : pat; }
+
+/* ---------- Unidades agregadas desde la app (＋ Nueva unidad) ----------
+   La lista de arriba es la flota base. Las altas hechas desde la app se guardan en Firebase
+   (flota_extra/PATENTE) y se suman a FLOTA_VICUNA en todos los dispositivos, así aparecen en
+   Flota, en la Hoja de QR y abren su ficha al escanear el QR. */
+const FV_FLOTA_BASE_N = FLOTA_VICUNA.length;
+function fvNormPatente(p){ return String(p||'').replace(/[\s.\-]+/g,'').toUpperCase(); }
+function flotaEsBase(pat){
+  const p = fvNormPatente(pat);
+  for(let i=0;i<FV_FLOTA_BASE_N;i++){ const x=FLOTA_VICUNA[i]; if(x.patente===p || x.previa===p) return true; }
+  return false;
+}
+function flotaAplicarExtra(obj){
+  FLOTA_VICUNA.length = FV_FLOTA_BASE_N;                 // quitar las altas anteriores y volver a sumarlas
+  Object.keys(obj||{}).sort().forEach(k=>{
+    const u = obj[k]; if(!u || typeof u!=='object') return;
+    const p = fvNormPatente(u.patente || k);
+    if(!/^[A-Z0-9]{5,8}$/.test(p) || flotaEsBase(p) || FLOTA_VICUNA.some(x=>x.patente===p)) return;
+    FLOTA_VICUNA.push({ patente:p, interno:String(u.interno||'').trim().toUpperCase(), vehiculo:String(u.vehiculo||'').trim().toUpperCase() || 'SIN MODELO',
+      año:(parseInt(u['año'],10) || ''), area:String(u.area||'').trim(), extra:true });
+  });
+  // refrescar lo que muestra la flota (al arrancar algunas partes todavía no existen: se ignora)
+  try{ const el=document.getElementById('brandSub'); if(el) el.textContent='Proyecto Vicuña · Flota '+FLOTA_VICUNA.length+' unidades · '+APP_VERSION; }catch(e){}
+  try{ initFlotaDatalist(); }catch(e){}
+  try{
+    if(curTab==='flota'){
+      const b=document.getElementById('flotaBusq');
+      if(b && document.activeElement===b){ actualizarFlotaLista(); const t=document.getElementById('flotaTit'); if(t) t.textContent='Flota Vicuña — '+FLOTA_VICUNA.length+' unidades'; }
+      else render();
+    }
+  }catch(e){}
+  try{ if(window._fvQrPublico && typeof fvFichaPublicaRender==='function') fvFichaPublicaRender(); }catch(e){}
+}
+// Copia local: en este dispositivo las altas aparecen al instante, sin esperar a la base
+try{ const g = JSON.parse(localStorage.getItem('fv_flota_extra')||'null'); if(g) flotaAplicarExtra(g); }catch(e){}
+whenAuthReady(()=> db.ref('flota_extra').on('value', snap => {
+  const val = snap.val() || {};
+  flotaAplicarExtra(val);
+  try{ localStorage.setItem('fv_flota_extra', JSON.stringify(val)); }catch(e){}
+  window._fvFlotaLista = true;
+}, err => { console.warn('flota_extra', err); window._fvFlotaLista = true; }));
+
+// Alta / edición de una unidad (solo Administrador)
+function openNuevaUnidad(patEditar){
+  if(!esAdmin()) return;
+  const ed = patEditar ? FLOTA_VICUNA.find(x=>x.extra && x.patente===patEditar) : null;
+  const prev = document.getElementById('nuevaUnidadModal'); if(prev) prev.remove();
+  const modelos = Array.from(new Set(FLOTA_VICUNA.map(v=>v.vehiculo))).sort();
+  const areas = Array.from(new Set(FLOTA_VICUNA.map(v=>v.area).filter(Boolean))).sort();
+  const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const m = document.createElement('div');
+  m.id = 'nuevaUnidadModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px;';
+  m.onclick = e => { if(e.target===m) m.remove(); };
+  const lbl = 'display:block;font-size:12px;font-weight:700;color:var(--text2);margin:10px 0 4px;text-align:left;';
+  m.innerHTML = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;max-width:400px;width:100%;padding:18px;color:var(--text);max-height:92vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <div style="font-size:16px;font-weight:800;">${ed?'Editar unidad':'Nueva unidad'}</div>
+        <button onclick="document.getElementById('nuevaUnidadModal').remove()" style="background:none;border:none;color:var(--text3);font-size:24px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+      <div style="font-size:12px;color:var(--text3);">${ed?'Cambiá los datos y guardá.':'Al guardar queda en la flota con su código QR listo.'}</div>
+      <label style="${lbl}">Patente *</label>
+      <input class="fi" id="nuPat" placeholder="AB123CD" autocomplete="off" maxlength="9" value="${ed?esc(ed.patente):''}" ${ed?'disabled':''} style="text-transform:uppercase;margin-bottom:0;width:100%;box-sizing:border-box;" oninput="this.value=this.value.toUpperCase()">
+      <label style="${lbl}">Interno</label>
+      <input class="fi" id="nuInt" placeholder="VL150" autocomplete="off" maxlength="12" value="${ed?esc(ed.interno):''}" style="text-transform:uppercase;margin-bottom:0;width:100%;box-sizing:border-box;">
+      <label style="${lbl}">Vehículo / modelo *</label>
+      <input class="fi" id="nuVeh" list="nuVehList" placeholder="TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR" autocomplete="off" maxlength="60" value="${ed?esc(ed.vehiculo):''}" style="text-transform:uppercase;margin-bottom:0;width:100%;box-sizing:border-box;">
+      <datalist id="nuVehList">${modelos.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+      <div style="display:flex;gap:10px;">
+        <div style="flex:0 0 110px;"><label style="${lbl}">Año *</label>
+          <input class="fi" id="nuAnio" type="number" inputmode="numeric" min="1990" max="2100" placeholder="${new Date().getFullYear()}" value="${ed?esc(ed.año):''}" style="margin-bottom:0;width:100%;box-sizing:border-box;"></div>
+        <div style="flex:1;min-width:0;"><label style="${lbl}">Área</label>
+          <input class="fi" id="nuArea" list="nuAreaList" placeholder="Mantenimiento" autocomplete="off" maxlength="40" value="${ed?esc(ed.area):''}" style="margin-bottom:0;width:100%;box-sizing:border-box;">
+          <datalist id="nuAreaList">${areas.map(x=>`<option value="${esc(x)}">`).join('')}</datalist></div>
+      </div>
+      <div id="nuErr" style="font-size:12.5px;color:#FF6B6B;min-height:18px;margin-top:10px;"></div>
+      <button class="btn-primary" id="nuGuardar" onclick="guardarNuevaUnidad(${ed?`'${ed.patente}'`:''})" style="width:100%;margin-top:4px;">${ed?'Guardar cambios':'Guardar y ver QR'}</button>
+      ${ed?`<button onclick="eliminarUnidadExtra('${ed.patente}')" style="width:100%;margin-top:10px;background:none;border:1px solid #FF453A;color:#FF6B6B;border-radius:12px;padding:11px;font-weight:700;font-size:14px;cursor:pointer;">Quitar unidad de la flota</button>`:''}
+    </div>`;
+  document.body.appendChild(m);
+  const f = document.getElementById(ed?'nuInt':'nuPat'); if(f) setTimeout(()=>f.focus(), 50);
+}
+function guardarNuevaUnidad(patEditar){
+  if(!esAdmin()) return;
+  const err = t => { const e=document.getElementById('nuErr'); if(e) e.textContent=t; };
+  const val = id => (document.getElementById(id)||{value:''}).value;
+  const pat = patEditar || fvNormPatente(val('nuPat'));
+  const interno = fvNormPatente(val('nuInt'));
+  const vehiculo = String(val('nuVeh')).trim().replace(/\s+/g,' ').toUpperCase();
+  const anio = parseInt(val('nuAnio'),10);
+  const area = String(val('nuArea')).trim().replace(/\s+/g,' ');
+  if(!/^[A-Z0-9]{6,7}$/.test(pat)) return err('Patente inválida: 6 o 7 letras y números, sin espacios (ej. AB123CD).');
+  if(!patEditar){
+    const ya = flotaBuscar(pat);
+    if(ya) return err('La patente '+ya.patente+' ya está en la flota'+(ya.interno?' ('+ya.interno+')':'')+'.');
+  }
+  if(interno){
+    const dup = FLOTA_VICUNA.find(x=>x.interno && x.interno.toUpperCase()===interno && x.patente!==pat);
+    if(dup) return err('El interno '+interno+' ya lo tiene la unidad '+dup.patente+'.');
+  }
+  if(vehiculo.length < 3) return err('Completá el vehículo / modelo.');
+  if(!(anio>=1990 && anio<=2100)) return err('Completá el año (4 cifras).');
+  const btn = document.getElementById('nuGuardar'); if(btn){ btn.disabled = true; btn.textContent = 'Guardando…'; }
+  const reg = { patente:pat, interno:interno, vehiculo:vehiculo, 'año':anio, area:area, alta:new Date().toISOString().slice(0,10) };
+  let cerrado = false;
+  const falla = e => { if(cerrado) return; cerrado = true; console.error('alta unidad', e);
+    if(btn){ btn.disabled=false; btn.textContent = patEditar?'Guardar cambios':'Guardar y ver QR'; }
+    err('No se pudo guardar. Revisá la conexión y probá de nuevo.'); };
+  const t = setTimeout(()=>falla('sin respuesta'), 15000);
+  db.ref('flota_extra/'+pat).set(reg).then(()=>{
+    if(cerrado) return; cerrado = true; clearTimeout(t);
+    // por si el aviso de la base tarda, sumarla ya a la lista de este dispositivo
+    if(!FLOTA_VICUNA.some(x=>x.patente===pat)){
+      let g = {}; try{ g = JSON.parse(localStorage.getItem('fv_flota_extra')||'{}') || {}; }catch(e){}
+      g[pat] = reg; flotaAplicarExtra(g);
+    }
+    const m = document.getElementById('nuevaUnidadModal'); if(m) m.remove();
+    if(!patEditar && typeof mostrarQrUnidad==='function') mostrarQrUnidad(pat);
+  }).catch(e=>{ clearTimeout(t); falla(e); });
+}
+function eliminarUnidadExtra(pat){
+  if(!esAdmin()) return;
+  const v = FLOTA_VICUNA.find(x=>x.extra && x.patente===pat); if(!v) return;
+  if(!confirm('¿Quitar '+pat+' de la flota?\n\nSus turnos y órdenes de trabajo no se borran, pero el QR impreso de esta unidad dejará de abrir su ficha.')) return;
+  db.ref('flota_extra/'+pat).remove().then(()=>{ const m=document.getElementById('nuevaUnidadModal'); if(m) m.remove(); })
+    .catch(e=>{ console.error(e); alert('No se pudo quitar la unidad. Revisá la conexión.'); });
+}
 
 function initFlotaDatalist() {
   const dl = document.getElementById('flotaList');
@@ -1373,8 +1501,9 @@ function flotaListaHtml(busq) {
         <div style="flex:1;min-width:0;">
           <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:0.03em;">${v.patente}${v.interno ? `<span style="font-size:11.5px;font-weight:700;color:var(--red);margin-left:8px;letter-spacing:0;">${v.interno}</span>` : ''}</div>
           <div style="font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${v.vehiculo}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px;">Año ${v.año}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">Año ${v.año}${v.extra ? ` · <span style="color:var(--cyan,#35D6FF);font-weight:700;">Agregada desde la app</span>` : ''}</div>
         </div>
+        ${v.extra && esAdmin() ? `<button onclick="event.stopPropagation();openNuevaUnidad('${v.patente}')" title="Editar unidad" style="flex-shrink:0;background:none;border:1px solid var(--border);color:var(--text2);border-radius:10px;width:36px;height:36px;font-size:15px;cursor:pointer;">✎</button>` : ''}
         <div style="text-align:right;flex-shrink:0;">
           ${t > 0
             ? `<span style="background:#34C75920;color:#34C759;border-radius:20px;padding:3px 10px;font-size:12px;font-weight:600;">${t} turno${t!==1?'s':''}</span>`
@@ -1392,8 +1521,11 @@ function renderFlota(c) {
   const busq = (document.getElementById('flotaBusq') || {value:''}).value || '';
   c.innerHTML = `
     <div class="sec-hdr" style="display:flex;align-items:center;justify-content:space-between;">
-      <span>Flota Vicuña — ${FLOTA_VICUNA.length} unidades</span>
-      <button onclick="openQrFlota()" style="background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">▦ Hoja de QR</button>
+      <span id="flotaTit">Flota Vicuña — ${FLOTA_VICUNA.length} unidades</span>
+      <span style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+        ${esAdmin() ? `<button onclick="openNuevaUnidad()" style="background:var(--red);border:1px solid var(--red);color:#fff;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">＋ Nueva unidad</button>` : ''}
+        <button onclick="openQrFlota()" style="background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">▦ Hoja de QR</button>
+      </span>
     </div>
     <div style="padding:0 16px 8px;">
       <input class="fi" id="flotaBusq" placeholder="Buscar patente, interno, modelo..." autocomplete="off"
@@ -3937,7 +4069,12 @@ function fvAbrirDesdeQR(){
     pat = decodeURIComponent(pat).replace(/\s+/g,'').toUpperCase();
     const v = (typeof flotaBuscar==='function') ? flotaBuscar(pat) : null;
     const patValida = v ? v.patente : null;
-    if(!patValida) return;
+    if(!patValida){
+      // puede ser una unidad agregada desde la app cuya alta todavía no llegó a este dispositivo
+      window._fvQrReint = (window._fvQrReint||0) + 1;
+      if(fvPatenteUrlCruda() && !window._fvFlotaLista && window._fvQrReint < 30) setTimeout(fvAbrirDesdeQR, 400);
+      return;
+    }
     try{ history.replaceState({}, '', fvBaseUrl()); }catch(e){}
     let intentos = 0;
     (function esperar(){
@@ -3957,6 +4094,14 @@ function fvAbrirDesdeQR(){
    se muestra directamente la ficha de la unidad en modo consulta: datos,
    próximo turno e historial de intervenciones, sin costos. Para entrar al
    resto de la app o cargar un turno se pide el PIN. */
+// Patente que trae el QR, tal cual (aunque todavía no esté en la lista de la flota)
+function fvPatenteUrlCruda(){
+  try{
+    const params = new URLSearchParams(location.search);
+    const pat = fvNormPatente(decodeURIComponent(params.get('u') || params.get('unidad') || params.get('patente') || ''));
+    return /^[A-Z0-9]{5,8}$/.test(pat) ? pat : null;
+  }catch(e){ return null; }
+}
 function fvPatenteDeUrl(){
   try{
     const params = new URLSearchParams(location.search);
@@ -5957,13 +6102,26 @@ function generarInformeKPIWord(mesKey){
    ================================================================= */
 
 function accesoInit(){
-  if(typeof fvBootFin==='function') fvBootFin();
+  const finArranque = () => { if(typeof fvBootFin==='function') fvBootFin(); };
   // recordar sesión en este dispositivo
   const saved = sessionStorage.getItem('fv_role');
-  if(saved === 'admin' || saved === 'supervisor' || saved === 'supervisor_vicuna'){ userRole = saved; aplicarRol(); return; }
+  if(saved === 'admin' || saved === 'supervisor' || saved === 'supervisor_vicuna'){ finArranque(); userRole = saved; aplicarRol(); return; }
   // Abierta desde un QR sin sesión: ficha de consulta de la unidad, sin pedir PIN
   const _patQr = (typeof fvPatenteDeUrl==='function') ? fvPatenteDeUrl() : null;
-  if(_patQr && typeof fvFichaPublica==='function'){ fvFichaPublica(_patQr); return; }
+  if(_patQr && typeof fvFichaPublica==='function'){ finArranque(); fvFichaPublica(_patQr); return; }
+  // QR de una patente que no está en la lista: puede ser una unidad agregada desde la app.
+  // Se espera a que llegue la lista de altas (sigue la pantalla de carga) antes de pedir PIN.
+  if(typeof fvPatenteUrlCruda==='function' && fvPatenteUrlCruda() && !window._fvFlotaLista){
+    let n = 0;
+    const t = setInterval(function(){
+      n++;
+      const p = fvPatenteDeUrl();
+      if(p){ clearInterval(t); finArranque(); fvFichaPublica(p); }
+      else if(window._fvFlotaLista || n > 40){ clearInterval(t); finArranque(); mostrarLogin(); }
+    }, 300);
+    return;
+  }
+  finArranque();
   mostrarLogin();
 }
 
