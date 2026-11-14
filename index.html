@@ -1108,7 +1108,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v83';
+const APP_VERSION = 'v84';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -4299,7 +4299,6 @@ function fvFichaPublicaRender(){
     </div>
     <div style="max-width:640px;margin:0 auto;padding:14px 14px 30px;">
       ${cuerpo}
-      <button onclick="fvFichaPublicaSalir()" style="width:100%;margin-top:14px;padding:12px;border-radius:12px;border:1px solid var(--border,#333);background:var(--card,#1a1a1a);color:var(--text,#fff);font-weight:700;font-size:13px;cursor:pointer;">Ingresar a la app con PIN</button>
       <div style="text-align:center;font-size:10.5px;color:var(--text3,#888);margin-top:10px;">Freddy El Taller S.R.L. · Mantenimiento Livianos Vicuña</div>
     </div>`;
   ov.scrollTop = scroll;
