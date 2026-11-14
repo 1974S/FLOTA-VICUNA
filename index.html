@@ -1007,6 +1007,7 @@ whenAuthReady(()=> refTurnos.on('value', snap => {
     events = [];
     nid = 1;
   }
+  try{ if(typeof otSincronizarTurnosPM==='function') otSincronizarTurnosPM(); }catch(e){}
   try { localStorage.setItem('tf_vicuna_v1', JSON.stringify(events)); } catch(e) {}
   window._fvTurnosListo = true;
   if(window._fvQrPublico && typeof fvFichaPublicaRender==='function'){ try{ fvFichaPublicaRender(); }catch(e){} }
@@ -1108,7 +1109,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v85';
+const APP_VERSION = 'v86';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -2500,6 +2501,51 @@ function otLoadLocal(){
 function otSaveLocal(){
   try { localStorage.setItem(OT_KEY, JSON.stringify(otData)); } catch(e){}
 }
+/* ---------- Regla de PM ----------
+   Toda orden de trabajo que lleve ACEITE DE MOTOR + FILTRO DE ACEITE + FILTRO DE AIRE (los tres) se toma
+   como mantenimiento PM, aunque la hoja diga "Reparaciones varias" u otra cosa. Se busca tanto en los
+   repuestos como en los trabajos. Las ventas de mostrador (sin servicio) no se tocan. */
+function otTxtNorm(s){ return String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+function otEsServicioPM(o){
+  if(!o) return false;
+  const descs = [].concat((o.repuestos||[]).map(r=>r && r.desc), (o.trabajos||[]).map(t=>t && t.desc)).map(otTxtNorm);
+  let aceite=false, fAceite=false, fAire=false;
+  descs.forEach(d=>{
+    if(/\bFILT|\bELEMENTO\b/.test(d)){
+      if(/\bACEITE\b/.test(d)) fAceite = true;                                   // filtro de aceite
+      else if(/\bAIRE\b/.test(d) && !/ACOND|A\/C|HABIT|CABINA|POLEN/.test(d)) fAire = true;   // filtro de aire del motor (no el del habitáculo)
+    } else if(/\bACEITE\b|\bLUBRICANTE\b/.test(d) && !/CAJA|DIFERENCIAL|TRANSMISION|TRANSFER|HIDRAUL|DIRECCION|FRENO|\bATF\b/.test(d)
+              && (/\bMOTOR\b/.test(d) || /\b(0|5|10|15|20)W-?\d{2}\b/.test(d))) aceite = true;   // aceite de motor (por nombre o por grado 5W30, 15W40…)
+  });
+  return aceite && fAceite && fAire;
+}
+// Aplica la regla a todas las OT cargadas. Devuelve cuántas cambió.
+function otReclasificarPM(){
+  let n = 0;
+  try{
+    Object.keys(otData||{}).forEach(p => (otData[p]||[]).forEach(o => {
+      if(o && o.tipo!=='PM' && o.tipo!=='Venta' && otEsServicioPM(o)){ o.tipo_orig = o.tipo || 'Otro'; o.tipo = 'PM'; n++; }
+    }));
+  }catch(e){ console.warn('otReclasificarPM', e); }
+  return n;
+}
+// Los turnos que se generaron desde una OT ahora tomada como PM pasan de Correctivo a PM 5.000 km.
+function otSincronizarTurnosPM(){
+  let n = 0;
+  try{
+    if(typeof otData==='undefined' || !otData || !Array.isArray(events)) return 0;
+    const ids = new Set();
+    Object.keys(otData).forEach(p => (otData[p]||[]).forEach(o => { if(o && o.id && o.tipo==='PM') ids.add(o.id); }));
+    events.forEach(e => {
+      if(e && e.origenOT && e.pm==='CORR' && ids.has(e.origenOT)){
+        e.pm = 'PM5'; if(e.checklist) e.checklist = null; n++;
+        if(esAdmin()){ try{ saveFirebase(e); }catch(x){} }
+      }
+    });
+  }catch(e){ console.warn('otSincronizarTurnosPM', e); }
+  return n;
+}
+
 // Si una patente de la flota fue corregida (campo `previa`), pasa el historial de OT a la patente vigente
 function otMigrarPatentes(){
   let cambio = false;
@@ -2519,7 +2565,14 @@ function otBindFirebase(){
   try {
     whenAuthReady(()=> db.ref('ordenes_trabajo').on('value', snap => {
       const v = snap.val(); window._fvOtListo = true;
-      if(v){ otData = v; otMigrarPatentes(); otSaveLocal(); otAutoLimpiar(); if(curTab==='inicio'||curTab==='flota') render(); }
+      if(v){
+        otData = v; otMigrarPatentes();
+        const nPM = otReclasificarPM();                 // aceite + filtro de aceite + filtro de aire => PM
+        if(nPM && esAdmin()) otPushFirebase();
+        const nT = otSincronizarTurnosPM();
+        otSaveLocal(); otAutoLimpiar();
+        if(nPM || nT) { try{ render(); }catch(e){} } else if(curTab==='inicio'||curTab==='flota') render();
+      }
       if(window._fvQrPublico && typeof fvFichaPublicaRender==='function'){ try{ fvFichaPublicaRender(); }catch(e){} }
     }));
   } catch(e){ console.warn('OT firebase', e); }
@@ -2710,6 +2763,9 @@ function otParseText(txt, archivo){
     if(l.indexOf('SUP:')===0) d.supervisor=l.replace('SUP:','').trim();
     if(l.indexOf('PRECIO TOTAL')===0){ m=/PRECIO TOTAL\s+(?:\$\s*)?([\d.,]+)\s+(?:USD\s*)?([\d.,]+)/.exec(l); if(m){ d.total_pesos=otNum(m[1]); d.total_usd=otNum(m[2]); } }
   });
+
+  // Regla de PM: aceite de motor + filtro de aceite + filtro de aire => se toma como PM
+  if(d.tipo!=='PM' && d.tipo!=='Venta' && otEsServicioPM(d)){ d.tipo_orig = d.tipo; d.tipo = 'PM'; }
 
   d.km_efectivo = d.km || d.km_comentario || null;
   d.fecha_iso = otFechaISO(d.fecha);
@@ -4385,6 +4441,7 @@ function otSanearTurnos(){
 
 /* ---------- Init ---------- */
 otLoadLocal();
+try{ otReclasificarPM(); otSincronizarTurnosPM(); }catch(e){}
 otBindFirebase();
 // sanear turnos OT viejos una vez que events esté disponible
 setTimeout(()=>{ let c=otSanearTurnos(); if(otAutoLimpiar()) c=true; if(c) { try{ render(); }catch(e){} } }, 2500);
