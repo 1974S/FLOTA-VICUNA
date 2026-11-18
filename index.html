@@ -751,6 +751,12 @@ select option { background: #0A1B40; color: #EAF4FF; }
 .theme-btn:active .tb-ring { transform:scale(.93); }
 html[data-theme="light"] .theme-btn .tb-bar { background:#ffb020; box-shadow:0 0 8px #ffb020; }
 body[data-role] #themeBtn { display:flex; }
+/* Botón "Nuevo turno": mismo pulsador que el de día / noche, en la esquina derecha */
+.fab.theme-btn.fab-eng { left:auto; right:20px; height:auto; border-radius:0; background:none !important; box-shadow:none !important; font-size:inherit; color:#fff; }
+.fab.theme-btn.fab-eng:active { transform:none; background:none !important; }
+.fab-eng .tb-plus { font-size:26px; font-weight:300; line-height:.85; margin-top:1px; }
+.fab-eng .tb-bar { background:#34c759; box-shadow:0 0 8px #34c759; }
+html[data-theme="light"] .fab-eng .tb-bar { background:#34c759; box-shadow:0 0 8px #34c759; }
 
 /* ═══════════ TEMA CLARO (modo día) — el oscuro sigue siendo el de siempre ═══════════ */
 html[data-theme="light"] {
@@ -853,7 +859,7 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
   <div class="content" id="content"></div>
 </div>
 
-<button class="fab" onclick="openAdd()" aria-label="Nuevo turno">+</button>
+<button class="fab theme-btn fab-eng" onclick="openAdd()" aria-label="Nuevo turno" title="Nuevo turno"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">NUEVO</span><span class="tb-plus">+</span><span class="tb-l3">TURNO</span></span></span><span class="tb-bar"></span></button>
 <button id="themeBtn" class="theme-btn" onclick="fvTemaCambiar()" aria-label="Cambiar entre modo día y noche" title="Modo noche — tocá para pasar a día"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">MODO</span><span class="tb-mode">NOCHE</span><span class="tb-l3">DÍA / NOCHE</span></span></span><span class="tb-bar"></span></button>
 <script>try{ fvTemaAplicar(fvTemaActual()); }catch(e){}</script>
 
@@ -1244,7 +1250,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v92';
+const APP_VERSION = 'v93';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
