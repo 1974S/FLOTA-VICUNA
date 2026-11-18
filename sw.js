@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vicuna-v94';
+const CACHE_NAME = 'vicuna-v95';
 const LIBS_CACHE = 'vicuna-libs-1';      // librerías externas: no cambian nunca, se guardan una sola vez
 const ASSETS = [
   './index.html',

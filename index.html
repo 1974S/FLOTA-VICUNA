@@ -835,6 +835,15 @@ html[data-theme="light"] .alert-warn { background:rgba(255,170,0,.14); border-co
 .voz-panel .vp-resp { margin-top:4px; font-size:14px; color:var(--text); }
 .voz-panel .vp-resp:empty, .voz-panel .vp-txt:empty { display:none; }
 .voz-panel .vp-ej { margin-top:8px; font-size:11.5px; color:var(--text3); line-height:1.4; }
+
+/* Botones movibles */
+.theme-btn { cursor:grab; user-select:none; -webkit-user-select:none; }
+.theme-btn.btn-moviendo { cursor:grabbing; z-index:10090; transition:none; }
+.theme-btn.btn-moviendo .tb-ring { transform:scale(1.12); box-shadow:0 0 0 3px rgba(74,163,255,.55), 0 10px 24px rgba(0,0,0,.6); }
+.btn-toast { position:fixed; left:50%; transform:translateX(-50%); bottom:calc(120px + var(--safe-b)); z-index:10095; display:flex; align-items:center; gap:12px; padding:9px 10px 9px 14px; border-radius:999px;
+  background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow:0 6px 20px rgba(0,0,0,.45); font-size:13px; font-weight:600; white-space:nowrap; }
+.btn-toast[hidden] { display:none; }
+.btn-toast button { border:none; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:800; background:var(--red); color:#fff; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -877,7 +886,7 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
   <div class="content" id="content"></div>
 </div>
 
-<button class="fab theme-btn fab-eng" onclick="openAdd()" aria-label="Nuevo turno" title="Nuevo turno"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">NUEVO</span><span class="tb-plus">+</span><span class="tb-l3">TURNO</span></span></span><span class="tb-bar"></span></button>
+<button id="addBtn" class="fab theme-btn fab-eng" onclick="openAdd()" aria-label="Nuevo turno" title="Nuevo turno"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">NUEVO</span><span class="tb-plus">+</span><span class="tb-l3">TURNO</span></span></span><span class="tb-bar"></span></button>
 <button id="themeBtn" class="theme-btn" onclick="fvTemaCambiar()" aria-label="Cambiar entre modo día y noche" title="Modo noche — tocá para pasar a día"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">MODO</span><span class="tb-mode">NOCHE</span><span class="tb-l3">DÍA / NOCHE</span></span></span><span class="tb-bar"></span></button>
 <script>try{ fvTemaAplicar(fvTemaActual()); }catch(e){}</script>
 <button id="vozBtn" class="theme-btn voz-btn" onclick="fvVozToggle()" aria-label="Comando de voz" title="Comando de voz"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">COMANDO</span><svg class="tb-mic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11.5a7 7 0 0 0 14 0M12 18.5V22"/></svg><span class="tb-l3">DE VOZ</span></span></span><span class="tb-bar"></span></button>
@@ -937,6 +946,7 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
   window.fvVozEjecutar = function(texto){
     window.__fvVozUltimo = texto; var t = norm(texto); if(!t) return false;
     var soloLect = (typeof soloLectura==='function') && soloLectura();
+    if(/(restablecer|resetear|acomodar|ordenar|volver)/.test(t) && /boton/.test(t)){ fvBotonesReset(); return responder('Botones en su lugar original.'); }
     // modo día / noche
     if(/\b(modo|tema)\b/.test(t)){
       if(/(noche|oscuro)/.test(t)) { fvTemaAplicar('dark'); return responder('Modo noche activado.'); }
@@ -1004,6 +1014,71 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
   };
 })();
 </script>
+<div id="btnToast" class="btn-toast" hidden><span id="btnToastTxt">Posición guardada</span><button type="button" onclick="fvBotonesReset()">Restablecer</button></div>
+<script>
+/* ═══════ Botones flotantes movibles ═══════
+   Se arrastran con el dedo (o el mouse) adonde no molesten. La posición se recuerda en este dispositivo.
+   Un toque corto sigue funcionando como siempre. Para volver todo a su lugar: botón "Restablecer"
+   que aparece al soltar, o el comando de voz «restablecer botones». */
+(function(){
+  var KEY='fv_btnpos', IDS={ themeBtn:'tema', vozBtn:'voz', addBtn:'nuevo' };
+  var fab = document.querySelector('.fab-eng'); if(fab && !fab.id) fab.id='addBtn';
+  function leer(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){ return {}; } }
+  function guardar(o){ try{ localStorage.setItem(KEY, JSON.stringify(o)); }catch(e){} }
+  function limitar(el, x, y){
+    var w=el.offsetWidth, h=el.offsetHeight, vw=window.innerWidth, vh=window.innerHeight;
+    return { x:Math.max(4, Math.min(vw-w-4, x)), y:Math.max(4, Math.min(vh-h-4, y)) };
+  }
+  function poner(el, x, y){
+    var p=limitar(el,x,y); el.style.left=p.x+'px'; el.style.top=p.y+'px'; el.style.right='auto'; el.style.bottom='auto'; el.style.marginLeft='0';
+  }
+  function aplicarGuardadas(){
+    var g=leer();
+    Object.keys(IDS).forEach(function(id){
+      var el=document.getElementById(id), p=g[IDS[id]]; if(!el || !p) return;
+      poner(el, p.x*window.innerWidth, p.y*window.innerHeight);
+    });
+  }
+  var toastT=null;
+  function aviso(){ var t=document.getElementById('btnToast'); if(!t) return; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(function(){ t.hidden=true; }, 5000); }
+  window.fvBotonesReset = function(){
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    Object.keys(IDS).forEach(function(id){ var el=document.getElementById(id); if(el){ el.style.left=el.style.top=el.style.right=el.style.bottom=el.style.marginLeft=''; } });
+    var t=document.getElementById('btnToast'); if(t) t.hidden=true;
+  };
+  var drag=null, movido=false;
+  function bajar(ev){
+    var el=ev.currentTarget; if(ev.button!==undefined && ev.button!==0) return;
+    var r=el.getBoundingClientRect();
+    drag={ el:el, id:el.id, sx:ev.clientX, sy:ev.clientY, ox:r.left, oy:r.top, activo:false, pid:ev.pointerId };
+    try{ el.setPointerCapture(ev.pointerId); }catch(e){}
+  }
+  function mover(ev){
+    if(!drag || ev.pointerId!==drag.pid) return;
+    var dx=ev.clientX-drag.sx, dy=ev.clientY-drag.sy;
+    if(!drag.activo){ if(Math.abs(dx)+Math.abs(dy) < 9) return; drag.activo=true; drag.el.classList.add('btn-moviendo'); try{ navigator.vibrate && navigator.vibrate(15); }catch(e){} }
+    poner(drag.el, drag.ox+dx, drag.oy+dy); ev.preventDefault();
+  }
+  function soltar(ev){
+    if(!drag || ev.pointerId!==drag.pid) return;
+    var d=drag; drag=null; d.el.classList.remove('btn-moviendo');
+    if(d.activo){
+      movido=true; setTimeout(function(){ movido=false; }, 350);
+      var r=d.el.getBoundingClientRect(), g=leer();
+      g[IDS[d.id]]={ x:r.left/window.innerWidth, y:r.top/window.innerHeight }; guardar(g); aviso();
+    }
+  }
+  window.addEventListener('click', function(ev){ if(movido && ev.target.closest && ev.target.closest('.theme-btn')){ ev.stopPropagation(); ev.preventDefault(); movido=false; } }, true);
+  Object.keys(IDS).forEach(function(id){
+    var el=document.getElementById(id); if(!el) return;
+    el.style.touchAction='none';
+    el.addEventListener('pointerdown', bajar); el.addEventListener('pointermove', mover);
+    el.addEventListener('pointerup', soltar); el.addEventListener('pointercancel', soltar);
+  });
+  aplicarGuardadas(); window.addEventListener('resize', aplicarGuardadas); window.addEventListener('orientationchange', function(){ setTimeout(aplicarGuardadas,200); });
+})();
+</script>
+
 
 
 <!-- ADD OVERLAY -->
@@ -1393,7 +1468,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v94';
+const APP_VERSION = 'v95';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
