@@ -1113,7 +1113,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v88';
+const APP_VERSION = 'v89';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1352,14 +1352,16 @@ function renderInicio(c) {
 
   const total  = events.length;
   const ok     = events.filter(e => getStatus(e).sc === 'st-ok').length;
-  const prox   = events.filter(e => getStatus(e).sc === 'st-prox').length;
+  // "Por vencer" = unidades a las que les faltan 200 km o menos para el km del próximo PM (mismo criterio que el Informe PM)
+  let prox = 0;
+  try { prox = fvInformePMDatos().proximas.length; } catch(e) { prox = 0; }
   const venc   = events.filter(e => getStatus(e).sc === 'st-venc').length;
 
   let html = `
     <div class="kpi-strip">
       <div class="kpi-card kpi-blue"><div class="kpi-num">${total}</div><div class="kpi-lbl">Turnos</div></div>
       <div class="kpi-card" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 8px;text-align:center;flex:1;"><div class="kpi-num" style="color:#5856D6;">${FLOTA_VICUNA.length}</div><div class="kpi-lbl">Flota</div></div>
-      <div class="kpi-card kpi-orange"><div class="kpi-num">${prox}</div><div class="kpi-lbl">Por vencer</div></div>
+      <div class="kpi-card kpi-orange" onclick="openInformePM()" style="cursor:pointer;" title="Unidades a las que les faltan 200 km o menos para el PM"><div class="kpi-num">${prox}</div><div class="kpi-lbl">Por vencer</div></div>
       <div class="kpi-card kpi-red"><div class="kpi-num">${venc}</div><div class="kpi-lbl">Vencidos</div></div>
     </div>
     ${buildCal()}
