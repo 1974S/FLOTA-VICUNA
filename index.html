@@ -844,6 +844,12 @@ html[data-theme="light"] .alert-warn { background:rgba(255,170,0,.14); border-co
   background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow:0 6px 20px rgba(0,0,0,.45); font-size:13px; font-weight:600; white-space:nowrap; }
 .btn-toast[hidden] { display:none; }
 .btn-toast button { border:none; border-radius:999px; padding:6px 12px; font-size:12px; font-weight:800; background:var(--red); color:#fff; cursor:pointer; }
+
+.voz-panel .vp-acc { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.voz-panel .vp-acc:empty { display:none; }
+.voz-panel .vp-acc button { border:none; border-radius:999px; padding:7px 12px; font-size:12px; font-weight:700; cursor:pointer; background:var(--red); color:#fff; }
+.voz-panel .vp-acc button.vp-sec { background:transparent; color:var(--text2); border:1px solid var(--border); }
+.voz-panel .vp-acc button.vp-chip { background:rgba(30,120,230,.16); color:var(--text); border:1px solid rgba(64,134,235,.5); }
 </style>
 </head>
 <body>
@@ -890,7 +896,7 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
 <button id="themeBtn" class="theme-btn" onclick="fvTemaCambiar()" aria-label="Cambiar entre modo día y noche" title="Modo noche — tocá para pasar a día"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">MODO</span><span class="tb-mode">NOCHE</span><span class="tb-l3">DÍA / NOCHE</span></span></span><span class="tb-bar"></span></button>
 <script>try{ fvTemaAplicar(fvTemaActual()); }catch(e){}</script>
 <button id="vozBtn" class="theme-btn voz-btn" onclick="fvVozToggle()" aria-label="Comando de voz" title="Comando de voz"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">COMANDO</span><svg class="tb-mic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11.5a7 7 0 0 0 14 0M12 18.5V22"/></svg><span class="tb-l3">DE VOZ</span></span></span><span class="tb-bar"></span></button>
-<div id="vozPanel" class="voz-panel" hidden onclick="fvVozCerrarPanel()"><div class="vp-top"><span class="vp-dot"></span><span id="vozEstado">Escuchando…</span></div><div id="vozTexto" class="vp-txt"></div><div id="vozResp" class="vp-resp"></div><div id="vozEj" class="vp-ej">Probá: «abrir AG287TV» · «cuánto le falta a VL103» · «unidades próximas a PM» · «ir a dashboard» · «modo día»</div></div>
+<div id="vozPanel" class="voz-panel" hidden onclick="if(!event.target.closest('button'))fvVozCerrarPanel()"><div class="vp-top"><span class="vp-dot"></span><span id="vozEstado">Escuchando…</span></div><div id="vozTexto" class="vp-txt"></div><div id="vozResp" class="vp-resp"></div><div id="vozAcc" class="vp-acc"></div><div id="vozEj" class="vp-ej">Probá: «abrir AG287TV» · «cuánto le falta a VL103» · «unidades próximas a PM» · «ir a dashboard» · «modo día»</div></div>
 <script>
 /* ═══════ Comando de voz ═══════
    Usa el reconocimiento de voz del navegador (Chrome / Edge). Solo LEE y navega: abrir fichas,
@@ -908,6 +914,7 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
     var p=$('vozPanel'); if(!p) return; p.hidden=false; clearTimeout(tOcultar);
     $('vozEstado').textContent = estado; $('vozTexto').textContent = texto||''; $('vozResp').textContent = resp||'';
     $('vozEj').style.display = mostrarEj ? 'block' : 'none';
+    var ac=$('vozAcc'); if(ac) ac.innerHTML='';
     p.classList.toggle('vp-on', !!escuchando);
   }
   window.fvVozCerrarPanel = function(){ var p=$('vozPanel'); if(p) p.hidden=true; };
@@ -924,7 +931,7 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
     var todo = verbos.replace(/\ba\b/g,' ');
     return [todo, verbos].map(function(x){ return numeros(x).replace(/[^a-z0-9]/g,'').toUpperCase(); }).filter(function(x,i,a){ return x.length>=2 && a.indexOf(x)===i; });
   }
-  var buscando = false;
+  var buscando = false, silencio = false, ultimaFalla = '', aprendiendo = null;
   function buscarUnidad(q){
     var L = (typeof FLOTA_VICUNA!=='undefined') ? FLOTA_VICUNA : [];
     var n = function(x){ return String(x||'').replace(/[^a-z0-9]/gi,'').toUpperCase(); };
@@ -943,7 +950,7 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
     return f>0 ? nom+': faltan '+N(f)+' km para el próximo PM, a los '+N(p.km)+' km.' : nom+': tiene el PM pasado por '+N(Math.abs(f))+' km.';
   }
 
-  window.fvVozEjecutar = function(texto){
+  var ejecutarBase = function(texto){
     window.__fvVozUltimo = texto; var t = norm(texto); if(!t) return false;
     var soloLect = (typeof soloLectura==='function') && soloLectura();
     if(/(restablecer|resetear|acomodar|ordenar|volver)/.test(t) && /boton/.test(t)){ fvBotonesReset(); return responder('Botones en su lugar original.'); }
@@ -967,6 +974,15 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
     if(/(pasad|vencid)/.test(t) && /(unidad|pm|cuant)/.test(t)){ try{ openInformePM(); }catch(e){} return responder(d.vencidas.length===1 ? 'Hay 1 unidad con el PM pasado.' : 'Hay '+d.vencidas.length+' unidades con el PM pasado.'); }
     if(/(proxim|por vencer)/.test(t) && /(unidad|pm|cuant|vencer)/.test(t)){ try{ openInformePM(); }catch(e){} return responder((d.proximas.length===1 ? 'Hay 1 unidad próxima' : 'Hay '+d.proximas.length+' unidades próximas')+' a PM, a 200 kilómetros o menos.'); }
     if(/informe pm/.test(t)){ try{ openInformePM(); }catch(e){} return responder('Informe PM: '+d.vencidas.length+' con PM pasado y '+d.proximas.length+' próximas.'); }
+    // cerrar ventana
+    if(/^(cerrar|cerra|volver|atras|salir de aca)( la| el)?( ventana| ficha| informe| formulario)?$/.test(t)){
+      document.querySelectorAll('#histModal,#informePMModal,#infEjecModal,#infCompModal').forEach(function(e){ e.remove(); });
+      document.querySelectorAll('.sheet.open,.overlay.open').forEach(function(e){ e.classList.remove('open'); });
+      return responder('Listo, cerré la ventana.');
+    }
+    // conteos generales
+    if(/cuant(os|as)/.test(t) && /\bturnos\b/.test(t) && !/cumplid/.test(t)){ var nT=(Array.isArray(events)?events:[]).length; return responder('Hay '+nT+(nT===1?' turno cargado.':' turnos cargados.')); }
+    if(/(cuant(as|os)|tamano|total)/.test(t) && /(unidades|flota|camionetas|vehiculos)/.test(t) && !/(pm|pasad|vencid|proxim)/.test(t)){ return responder('La flota tiene '+FLOTA_VICUNA.length+' unidades.'); }
     // pantallas
     var m = t.match(/^(?:ir a |abrir |mostrar |mostrame |ver |anda a |llevame a )?(?:la |el )?(?:pantalla |pestana |solapa )?(?:de )?(inicio|turnos|dashboard|tablero|flota|plan pm|plan)$/);
     if(m){ var k=m[1]; return irA(k==='tablero'?'dashboard':(k.indexOf('plan')===0?'plan':k)); }
@@ -982,8 +998,72 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
     }
     if(buscando && rU.q){ irA('flota'); var inp2=$('flotaBusq'); if(inp2){ inp2.value=rU.q; try{ actualizarFlotaLista(); }catch(e){} } return responder('No hay unidades con «'+rU.q+'».'); }
     var pidioUnidad = /(abrir|abri|buscar|busca|ficha|unidad|patente|interno|dominio|falta|faltan|estado)/.test(t);
-    panel('No encontré eso', texto, pidioUnidad ? 'No encontré esa unidad. Decí la patente o el interno, por ejemplo «abrir AG287TV».' : 'No entendí el comando.', true);
-    hablar(pidioUnidad ? 'No encontré esa unidad.' : 'No entendí el comando.'); ocultarLuego(9000); return false;
+    ultimaFalla = t;
+    if(silencio) return false;
+    panel('No entendí', texto, pidioUnidad ? 'No encontré esa unidad. Decí la patente o el interno, por ejemplo «abrir AG287TV».' : 'No entendí ese comando. Podés enseñármelo.', true);
+    $('vozAcc').innerHTML = '<button type="button" onclick="fvVozEnsenar()">🎓 Enseñarle</button><button type="button" class="vp-sec" onclick="fvVozAyuda()">Ver comandos</button>';
+    hablar(pidioUnidad ? 'No encontré esa unidad.' : 'No entendí el comando. Decí «aprender» para enseñármelo.'); ocultarLuego(14000); return false;
+  };
+
+  /* ---------- Modo aprendizaje ---------- */
+  var KEYA='fv_voz_alias';
+  function leerAlias(){ try{ var a=JSON.parse(localStorage.getItem(KEYA)||'[]'); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+  function guardarAlias(frase, destino){
+    var a=leerAlias().filter(function(x){ return x.p!==frase; }); a.unshift({p:frase, t:destino}); if(a.length>200) a.length=200;
+    try{ localStorage.setItem(KEYA, JSON.stringify(a)); }catch(e){}
+  }
+  function buscarAlias(t){
+    var a=leerAlias(); for(var i=0;i<a.length;i++){ var p=a[i].p; if(t===p || (p.length>=6 && (' '+t+' ').indexOf(' '+p+' ')>-1)) return a[i]; } return null;
+  }
+  var CANON = [['Ir a Inicio','inicio'],['Ir a Turnos','turnos'],['Ir a Dashboard','dashboard'],['Ir a Flota','flota'],['Ir a Plan PM','plan pm'],
+    ['Informe PM','informe pm'],['Unidades próximas a PM','unidades proximas a pm'],['Unidades con PM pasado','cuantas unidades con pm pasado'],['Turnos cumplidos','cuantos turnos cumplidos'],
+    ['Modo día','modo dia'],['Modo noche','modo noche'],['Nuevo turno','nuevo turno'],['Cerrar ventana','cerrar']];
+  function chipsCanon(){ return CANON.map(function(c,i){ return '<button type="button" class="vp-chip" onclick="fvVozAcc('+i+')">'+c[0]+'</button>'; }).join(''); }
+  function reescuchar(){ setTimeout(function(){ if(!escuchando && aprendiendo){ try{ window.fvVozToggle(); }catch(e){} } }, 1100); }
+  function pedirFrase(){ aprendiendo={stage:'frase'}; panel('Aprendizaje · paso 1 de 2','','Decí la frase nueva que querés usar. Por ejemplo: «mostrame lo atrasado».',false); $('vozAcc').innerHTML='<button type="button" class="vp-sec" onclick="fvVozCancelarAprender()">Cancelar</button>'; hablar('Decí la frase nueva que querés usar.'); reescuchar(); }
+  function pedirAccion(){ panel('Aprendizaje · paso 2 de 2','«'+aprendiendo.frase+'»','¿Qué querés que haga? Decí un comando que ya conozca (por ejemplo «informe PM») o tocá una opción.',false); $('vozAcc').innerHTML=chipsCanon()+'<button type="button" class="vp-sec" onclick="fvVozCancelarAprender()">Cancelar</button>'; hablar('Ahora decí qué querés que haga, o tocá una opción.'); reescuchar(); }
+  function aprendido(frase, destino){ guardarAlias(frase, destino); aprendiendo=null; ultimaFalla=''; return responder('Aprendido: cuando digas «'+frase+'» voy a hacer «'+destino+'».'); }
+  window.fvVozEnsenar = function(){ if(ultimaFalla){ aprendiendo={stage:'accion', frase:ultimaFalla}; pedirAccion(); } else pedirFrase(); };
+  window.fvVozCancelarAprender = function(){ aprendiendo=null; panel('Aprendizaje cancelado','','',false); ocultarLuego(2500); };
+  window.fvVozAcc = function(i){
+    var c=CANON[i]; if(!c || !aprendiendo || aprendiendo.stage!=='accion') return; var frase=aprendiendo.frase;
+    aprendiendo=null; ejecutarBase(c[1]); aprendido(frase, c[1]);
+  };
+  window.fvVozAyuda = function(){
+    panel('Comandos que entiendo','', '', false);
+    $('vozResp').innerHTML = '• «abrir AG287TV» / «ficha VL103»<br>• «cuánto le falta a OTV221»<br>• «unidades próximas a PM» · «unidades con PM pasado»<br>• «turnos cumplidos» · «cuántos turnos hay»<br>• «ir a dashboard / flota / turnos / inicio / plan PM»<br>• «buscar VL» · «nuevo turno para OTV221»<br>• «modo día» · «modo noche» · «cerrar»<br>• «restablecer botones»<br>• «aprender» para enseñarme frases nuevas';
+    ocultarLuego(20000);
+  };
+  window.fvVozLista = function(){
+    var a=leerAlias(); if(!a.length) return responder('Todavía no aprendí frases nuevas. Decí «aprender» para enseñarme.');
+    panel('Frases que aprendí ('+a.length+')','', '', false);
+    $('vozResp').innerHTML = a.slice(0,8).map(function(x){ return '• «'+fvEsc(x.p)+'» → «'+fvEsc(x.t)+'»'; }).join('<br>') + (a.length>8?'<br>… y '+(a.length-8)+' más':'');
+    $('vozAcc').innerHTML='<button type="button" class="vp-sec" onclick="fvVozOlvidarTodo()">Borrar todo</button>'; ocultarLuego(20000);
+  };
+  window.fvVozOlvidarTodo = function(){ try{ localStorage.removeItem(KEYA); }catch(e){} responder('Listo, borré todas las frases aprendidas.'); };
+
+  window.fvVozEjecutar = function(texto, silenciar){
+    var t = norm(texto); if(!t) return false;
+    silencio = !!silenciar;
+    try{
+      if(aprendiendo){
+        if(/^(cancelar|nada|olvidalo|salir|no)$/.test(t)){ aprendiendo=null; panel('Aprendizaje cancelado','','',false); ocultarLuego(2500); return true; }
+        if(aprendiendo.stage==='frase'){ aprendiendo={stage:'accion', frase:t}; pedirAccion(); return true; }
+        if(aprendiendo.stage==='accion'){
+          var fr=aprendiendo.frase; var ok = ejecutarBase(texto, true);
+          if(ok){ aprendiendo=null; return aprendido(fr, t); }
+          if(!silenciar){ panel('Aprendizaje · paso 2 de 2','«'+fr+'»','No conozco «'+texto+'». Probá con otro comando o tocá una opción.',false); $('vozAcc').innerHTML=chipsCanon(); reescuchar(); }
+          return false;
+        }
+      }
+      if(/^(modo aprendizaje|aprender|aprende|ensenar|ensename|quiero ensenarte|ensenale)\b/.test(t)){ if(ultimaFalla){ aprendiendo={stage:'accion', frase:ultimaFalla}; pedirAccion(); } else pedirFrase(); return true; }
+      if(/(ayuda|que puedo decir|que comandos|comandos disponibles|que sabes)/.test(t)){ window.fvVozAyuda(); return true; }
+      if(/(que|cuales|lista).*(aprendiste|aprendido|ensene)/.test(t) || /^frases aprendidas$/.test(t)){ window.fvVozLista(); return true; }
+      if(/(olvidar|borrar|eliminar).*(aprendid|ensenad|frases)/.test(t)){ window.fvVozOlvidarTodo(); return true; }
+      var al = buscarAlias(t);
+      if(al){ var okA = ejecutarBase(al.t, silenciar); if(okA) return true; }
+      return ejecutarBase(texto, silenciar);
+    } finally { silencio = false; }
   };
 
   function fin(){ escuchando=false; var b=$('vozBtn'); if(b) b.classList.remove('voz-on'); }
@@ -1000,8 +1080,8 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
       if(r.isFinal && !hecho){ hecho=true;
         var alts=[]; for(var i=0;i<r.length;i++) alts.push(r[i].transcript);
         escuchando=false; var b=$('vozBtn'); if(b) b.classList.remove('voz-on');
-        var ok=false; for(var j=0;j<alts.length && !ok;j++){ ok = window.fvVozEjecutar(alts[j]); }
-        if(!ok) window.fvVozEjecutar(alts[0]);
+        var ok=false; for(var j=0;j<alts.length && !ok;j++){ ok = window.fvVozEjecutar(alts[j], true); }
+        if(!ok) window.fvVozEjecutar(alts[0], false);
       }
     };
     rec.onerror = function(ev){
@@ -1468,7 +1548,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v95';
+const APP_VERSION = 'v96';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
