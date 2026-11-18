@@ -164,6 +164,13 @@ body {
   box-shadow: inset 0 0 0 2px #07080b, inset 0 0 24px rgba(0,0,0,.55), 0 4px 14px rgba(0,0,0,.45); }
 .cmd-row::before, .cmd-row::after { content:""; position:absolute; top:6px; width:6px; height:6px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#d9dde4,#6c727d 60%,#2a2d33); box-shadow:0 0 0 1px #000; }
 .cmd-row::before { left:6px; } .cmd-row::after { right:6px; }
+.dash-top { display:flex; flex-wrap:wrap; gap:10px; align-items:stretch; margin-bottom:14px; }
+.dash-top .cmd-row { margin:0; }
+.dash-kpis { flex:1 1 230px; min-width:0; display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.dash-kpi { --k:150,150,150; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:2px; padding:10px 6px; border-radius:12px; text-align:center;
+  background:linear-gradient(rgba(var(--k),.18),rgba(var(--k),.07)); border:1px solid rgba(var(--k),.6); box-shadow:0 0 14px rgba(var(--k),.20); color:var(--text); }
+.dash-kpi .n { font-size:28px; font-weight:800; line-height:1; color:rgb(var(--k)); text-shadow:0 0 12px rgba(var(--k),.45); }
+.dash-kpi .l { font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; line-height:1.2; color:var(--text2); }
 .cmd-row.cmd-solo { display:inline-flex; padding:14px 14px 12px; }
 .cmd-row.cmd-solo .cmd-btn { width:96px; }
 .cmd-btn { all:unset; box-sizing:border-box; width:25%; display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer; color:#d5dae3; text-align:center; -webkit-tap-highlight-color:transparent; }
@@ -1144,7 +1151,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v90';
+const APP_VERSION = 'v91';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -4740,6 +4747,9 @@ function renderDashboard(c) {
   // ===== HTML =====
   let html = `<div style="padding:14px 16px 30px;">`;
 
+  // ---- Fila superior: roster (admin) + contadores de PM / turnos cumplidos ----
+  let dpm = {vencidas:[], proximas:[]}; try { dpm = fvInformePMDatos(); } catch(e) {}
+  html += `<div class="dash-top">`;
   // ---- Consumo del contrato (cargado a mano desde el Anexo E-2 / Estado de Pago) ----
   if (typeof esAdmin==='function' && esAdmin()) {
     if (MOSTRAR_VALORES) html += `<button onclick="document.getElementById('inputEstadoPago').click()" class="cmd-btn" title="Cargar Estado de Pago (Excel)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Estado de pago</span></button>
@@ -4748,6 +4758,11 @@ function renderDashboard(c) {
     <div class="cmd-row cmd-solo"><button onclick="document.getElementById('inputRosterRep').click()" class="cmd-btn" title="Cargar roster de reparaciones (Excel)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Roster reparac.</span></button></div>
     <input type="file" id="inputRosterRep" accept=".xlsx,.xls" style="display:none;" onchange="importarRosterReparaciones(this.files[0])">`;
   }
+  html += `<div class="dash-kpis">
+    <div class="dash-kpi" style="--k:255,59,48;cursor:pointer;" onclick="openInformePM()" title="Unidades que ya pasaron el km del PM"><span class="n">${dpm.vencidas.length}</span><span class="l">Unidades con PM pasado</span></div>
+    <div class="dash-kpi" style="--k:255,176,32;cursor:pointer;" onclick="openInformePM()" title="Unidades a 200 km o menos del PM"><span class="n">${dpm.proximas.length}</span><span class="l">Unidades próximas a PM</span></div>
+    <div class="dash-kpi" style="--k:10,132,255;" title="Turnos cumplidos"><span class="n">${cumpl}</span><span class="l">Turnos cumplidos</span></div>
+  </div></div>`;
   if (estadoPagoData && MOSTRAR_VALORES) {
     const ep = estadoPagoData;
     const pct = (ep.pctConsumidoTotal||0)*100;
