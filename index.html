@@ -152,6 +152,37 @@ body {
 }
 
 /* ─── SEARCH BAR ──────────────────────────── */
+/* Panel de comandos estilo tablero de interruptores (fibra de carbono + teclas rojas + LED) */
+.cmd-row { display:flex; flex-wrap:wrap; gap:12px 0; margin:0 0 14px; padding:14px 6px 12px; border-radius:14px; border:1px solid #444a56; position:relative;
+  background-color:#121212;
+  background-image:
+    linear-gradient(27deg,#0c0c0c 5px,transparent 5px), linear-gradient(207deg,#0c0c0c 5px,transparent 5px),
+    linear-gradient(27deg,#232323 5px,transparent 5px), linear-gradient(207deg,#232323 5px,transparent 5px),
+    linear-gradient(90deg,#181818 10px,transparent 10px),
+    linear-gradient(#1c1c1c 25%,#181818 25%,#181818 50%,transparent 50%,transparent 75%,#242424 75%,#242424);
+  background-size:20px 20px; background-position:0 5px,10px 0,0 10px,10px 5px,0 0,0 0;
+  box-shadow: inset 0 0 0 2px #07080b, inset 0 0 24px rgba(0,0,0,.55), 0 4px 14px rgba(0,0,0,.45); }
+.cmd-row::before, .cmd-row::after { content:""; position:absolute; top:6px; width:6px; height:6px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#d9dde4,#6c727d 60%,#2a2d33); box-shadow:0 0 0 1px #000; }
+.cmd-row::before { left:6px; } .cmd-row::after { right:6px; }
+.cmd-row.cmd-solo { display:inline-flex; padding:14px 14px 12px; }
+.cmd-row.cmd-solo .cmd-btn { width:96px; }
+.cmd-btn { all:unset; box-sizing:border-box; width:25%; display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer; color:#d5dae3; text-align:center; -webkit-tap-highlight-color:transparent; }
+.cmd-btn .sw-led { width:8px; height:8px; border-radius:50%; background:#37e06b; box-shadow:0 0 7px #37e06b, inset 0 -1px 1px rgba(0,0,0,.4); transition:box-shadow .15s, background .15s; }
+.cmd-btn .sw-base { width:40px; height:46px; border-radius:7px; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(#2b2e35,#14161a); border:1px solid #000; box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 2px 4px rgba(0,0,0,.6); }
+.cmd-btn .sw-key { width:30px; height:36px; border-radius:5px; position:relative;
+  background:linear-gradient(#ff5a4f 0%,#e11616 45%,#a30a0a 100%); border:1px solid #4a0000;
+  box-shadow:0 4px 0 #5b0505, 0 6px 7px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.45), inset 0 -3px 5px rgba(0,0,0,.25);
+  transition:transform .08s, box-shadow .08s; }
+.cmd-btn .sw-key::after { content:""; position:absolute; left:5px; right:5px; top:7px; height:2px; border-radius:2px; background:rgba(255,255,255,.35); }
+.cmd-btn:active .sw-key { transform:translateY(3px) perspective(60px) rotateX(-14deg); box-shadow:0 1px 0 #5b0505, 0 2px 3px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.3); }
+.cmd-btn:active .sw-led { background:#b6ffcb; box-shadow:0 0 12px 2px #5dff8f; }
+.cmd-btn .sw-lbl { font-size:9.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; line-height:1.15; padding:0 2px; }
+/* variante pulsador redondo (acción principal) */
+.cmd-btn.cmd-main .sw-base { border-radius:50%; width:46px; height:46px; background:radial-gradient(circle at 35% 30%,#e9edf3,#8d939e 55%,#3b3f47); border:1px solid #000; }
+.cmd-btn.cmd-main .sw-key { width:32px; height:32px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#ff6a5e,#d60f0f 60%,#8f0707); box-shadow:0 0 10px rgba(255,40,40,.6), inset 0 1px 0 rgba(255,255,255,.5); }
+.cmd-btn.cmd-main .sw-key::after { display:none; }
+.cmd-btn.cmd-main:active .sw-key { transform:scale(.92); }
 .searchbar {
   background: var(--card);
   border-radius: var(--radius-s);
@@ -1113,7 +1144,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v89';
+const APP_VERSION = 'v90';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1442,16 +1473,18 @@ function renderTurnos(c) {
     </div>
     <div style="padding:0 16px 10px;">
       ${(typeof esAdmin==='function' && esAdmin()) ? `
-      <button onclick="document.getElementById('inputTurnosExcel').click()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📅 Importar turnos mensuales (Excel)</button>
+      <div class="cmd-row">
+      <button onclick="document.getElementById('inputTurnosExcel').click()" class="cmd-btn" title="Importar turnos (Excel)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Turnos Excel</span></button>
       <input type="file" id="inputTurnosExcel" accept=".xlsx,.xls" style="display:none;" onchange="importarTurnosExcel(this.files[0])">
-      <button onclick="openImportModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📥 Importar órdenes de trabajo (PDF)</button>
-      <button onclick="convertirPredictivosAInsp()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir Predictivo → Inspección mensual</button>
-      <button onclick="convertirPM10aPM5()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir PM 10.000 km → PM 5.000 km</button>
-      <button onclick="corregirFechasOT2020()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🛠️ Corregir OT importadas con fecha en 2020</button>
-      <button onclick="limpiarDuplicadosOT()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🧹 Eliminar órdenes de trabajo duplicadas</button>
-      ${MOSTRAR_VALORES ? `<button onclick="openPresupuestoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💰 Generar presupuesto</button>` : ''}
-      ${MOSTRAR_VALORES ? `<button onclick="openRemitoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📦 Generar remito</button>` : ''}
-      <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
+      <button onclick="openImportModal()" class="cmd-btn" title="Importar OT (PDF)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">OT PDF</span></button>
+      <button onclick="convertirPredictivosAInsp()" class="cmd-btn" title="Predictivo → Inspección"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Predictivo → Inspec.</span></button>
+      <button onclick="convertirPM10aPM5()" class="cmd-btn" title="PM 10.000 → PM 5.000 km"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">PM 10k → PM 5k</span></button>
+      <button onclick="corregirFechasOT2020()" class="cmd-btn" title="Corregir fechas OT 2020"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Fechas OT 2020</span></button>
+      <button onclick="limpiarDuplicadosOT()" class="cmd-btn" title="Quitar OT duplicadas"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Quitar duplicadas</span></button>
+      ${MOSTRAR_VALORES ? `<button onclick="openPresupuestoModal()" class="cmd-btn" title="Generar presupuesto"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Presupuesto</span></button>` : ''}
+      ${MOSTRAR_VALORES ? `<button onclick="openRemitoModal()" class="cmd-btn" title="Generar remito"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Remito</span></button>` : ''}
+      <button onclick="openInformeModal()" class="cmd-btn" title="Informe Excel"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Informe Excel</span></button>
+      </div>
       ` : ''}
     </div>
     `;
@@ -4709,10 +4742,10 @@ function renderDashboard(c) {
 
   // ---- Consumo del contrato (cargado a mano desde el Anexo E-2 / Estado de Pago) ----
   if (typeof esAdmin==='function' && esAdmin()) {
-    if (MOSTRAR_VALORES) html += `<button onclick="document.getElementById('inputEstadoPago').click()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💼 Cargar Estado de Pago (Excel)</button>
+    if (MOSTRAR_VALORES) html += `<button onclick="document.getElementById('inputEstadoPago').click()" class="cmd-btn" title="Cargar Estado de Pago (Excel)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Estado de pago</span></button>
     <input type="file" id="inputEstadoPago" accept=".xlsx,.xls" style="display:none;" onchange="importarEstadoPago(this.files[0])">`;
     html += `
-    <button onclick="document.getElementById('inputRosterRep').click()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:10px;">🔧 Cargar roster de reparaciones (Excel)</button>
+    <div class="cmd-row cmd-solo"><button onclick="document.getElementById('inputRosterRep').click()" class="cmd-btn" title="Cargar roster de reparaciones (Excel)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Roster reparac.</span></button></div>
     <input type="file" id="inputRosterRep" accept=".xlsx,.xls" style="display:none;" onchange="importarRosterReparaciones(this.files[0])">`;
   }
   if (estadoPagoData && MOSTRAR_VALORES) {
@@ -5107,9 +5140,11 @@ function renderDashboard(c) {
   html += kpiContratoHTML(window.__dash);
 
   html += `<div class="sec-hdr" style="margin:2px 0 12px;">Resumen de flota</div>`;
-  if (!soloLectura()) html += `<button onclick="openInformeEjecutivo()" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📄 Generar informe ejecutivo (PDF / Word)</button>`;
-  if (!soloLectura()) html += `<button onclick="openInformeCompleto()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--red);font-weight:700;font-size:14px;margin-bottom:14px;">📊 Informe completo de indicadores (PDF / Word)</button>`;
-  if (!soloLectura()) html += `<button onclick="generarPlanillaKPI()" style="width:100%;padding:13px;border-radius:12px;background:var(--card);color:var(--text);border:1.5px solid var(--border);font-weight:700;font-size:14px;margin-bottom:14px;">📈 Planilla de KPI del contrato (Excel)</button>`;
+  if (!soloLectura()) html += `<div class="cmd-row" style="margin-bottom:14px;">
+    <button onclick="openInformeEjecutivo()" class="cmd-btn cmd-main" title="Informe ejecutivo"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Informe ejecutivo</span></button>
+    <button onclick="openInformeCompleto()" class="cmd-btn" title="Informe de indicadores"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Indicadores</span></button>
+    <button onclick="generarPlanillaKPI()" class="cmd-btn" title="Planilla KPI (Excel)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Planilla KPI</span></button>
+  </div>`;
 
   // Fila: Estado de turnos + Tipos de PM
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">`;
@@ -6111,7 +6146,7 @@ function kpiContratoHTML(D){
   });
   h += `</tbody></table></div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Verde = cumple la meta · rojo = no cumple · amarillo = mes en curso · gris = sin datos. * Mes en curso (hasta hoy) / MTTR estimado.</div>
-    ${soloLectura() ? '' : `<button onclick="generarInformeKPIWord('${kpiMesSel}')" style="width:100%;padding:13px;border-radius:12px;background:var(--red);color:#fff;border:none;font-weight:700;font-size:14px;margin-bottom:14px;">📘 Informe mensual de KPI — ${M.nombre} (Word)</button>`}`;
+    ${soloLectura() ? '' : `<div class="cmd-row cmd-solo"><button onclick="generarInformeKPIWord('${kpiMesSel}')" class="cmd-btn cmd-main" title="Informe mensual de KPI — ${M.nombre} (Word)"><span class="sw-led"></span><span class="sw-base"><span class="sw-key"></span></span><span class="sw-lbl">Informe KPI ${M.nombre}</span></button></div>`}`;
   return h;
 }
 
