@@ -817,6 +817,24 @@ html[data-theme="light"] .sheet-close, html[data-theme="light"] .obs-block, html
 html[data-theme="light"] .fi, html[data-theme="light"] .fs, html[data-theme="light"] .fta { background-color:#fff; border-color:#B7C9E4; color:#10213F; }
 html[data-theme="light"] .fi:focus, html[data-theme="light"] .fs:focus, html[data-theme="light"] .fta:focus { border-color:#1E78E6; box-shadow:0 0 0 3px rgba(30,120,230,.15); }
 html[data-theme="light"] .alert-warn { background:rgba(255,170,0,.14); border-color:rgba(230,150,0,.5); color:#8A5A00; }
+
+/* Botón y panel de comando de voz */
+.voz-btn { left:50%; margin-left:-31px; }
+.voz-btn .tb-mic { margin:1px 0; }
+.voz-btn .tb-bar { background:#4aa3ff; box-shadow:0 0 8px #4aa3ff; }
+.voz-btn.voz-on .tb-bar { background:#ff3b30; box-shadow:0 0 10px #ff3b30; animation:vozBlink .8s infinite; }
+.voz-btn.voz-on .tb-ring { box-shadow:0 0 0 3px rgba(255,59,48,.45), 0 0 18px rgba(255,59,48,.6); }
+@keyframes vozBlink { 50% { opacity:.25; } }
+.voz-panel { position:fixed; left:14px; right:14px; bottom:calc(112px + var(--safe-b)); z-index:10100; max-width:520px; margin:0 auto; padding:12px 14px; border-radius:14px;
+  background:var(--card); color:var(--text); border:1px solid var(--border); box-shadow:0 8px 28px rgba(0,0,0,.45); }
+.voz-panel[hidden] { display:none; }
+.voz-panel .vp-top { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text2); }
+.voz-panel .vp-dot { width:9px; height:9px; border-radius:50%; background:#34c759; }
+.voz-panel.vp-on .vp-dot { background:#ff3b30; animation:vozBlink .8s infinite; }
+.voz-panel .vp-txt { margin-top:6px; font-size:16px; font-weight:700; min-height:0; }
+.voz-panel .vp-resp { margin-top:4px; font-size:14px; color:var(--text); }
+.voz-panel .vp-resp:empty, .voz-panel .vp-txt:empty { display:none; }
+.voz-panel .vp-ej { margin-top:8px; font-size:11.5px; color:var(--text3); line-height:1.4; }
 </style>
 </head>
 <body>
@@ -862,6 +880,131 @@ function fvBootFin(){ var b=document.getElementById('fvBoot'); if(b) b.remove();
 <button class="fab theme-btn fab-eng" onclick="openAdd()" aria-label="Nuevo turno" title="Nuevo turno"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">NUEVO</span><span class="tb-plus">+</span><span class="tb-l3">TURNO</span></span></span><span class="tb-bar"></span></button>
 <button id="themeBtn" class="theme-btn" onclick="fvTemaCambiar()" aria-label="Cambiar entre modo día y noche" title="Modo noche — tocá para pasar a día"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">MODO</span><span class="tb-mode">NOCHE</span><span class="tb-l3">DÍA / NOCHE</span></span></span><span class="tb-bar"></span></button>
 <script>try{ fvTemaAplicar(fvTemaActual()); }catch(e){}</script>
+<button id="vozBtn" class="theme-btn voz-btn" onclick="fvVozToggle()" aria-label="Comando de voz" title="Comando de voz"><span class="tb-ring"><span class="tb-face"><span class="tb-l1">COMANDO</span><svg class="tb-mic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11.5a7 7 0 0 0 14 0M12 18.5V22"/></svg><span class="tb-l3">DE VOZ</span></span></span><span class="tb-bar"></span></button>
+<div id="vozPanel" class="voz-panel" hidden onclick="fvVozCerrarPanel()"><div class="vp-top"><span class="vp-dot"></span><span id="vozEstado">Escuchando…</span></div><div id="vozTexto" class="vp-txt"></div><div id="vozResp" class="vp-resp"></div><div id="vozEj" class="vp-ej">Probá: «abrir AG287TV» · «cuánto le falta a VL103» · «unidades próximas a PM» · «ir a dashboard» · «modo día»</div></div>
+<script>
+/* ═══════ Comando de voz ═══════
+   Usa el reconocimiento de voz del navegador (Chrome / Edge). Solo LEE y navega: abrir fichas,
+   consultar km del PM, ir a una pantalla, cambiar el modo. Para cargar un turno solo abre el formulario
+   (y únicamente si el usuario tiene permiso de carga). */
+(function(){
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec = null, escuchando = false, tOcultar = null;
+  function $(id){ return document.getElementById(id); }
+  function norm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+  var NUM = {cero:0,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9};
+  function numeros(s){ return s.replace(/\b(cero|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\b/g, function(m){ return NUM[m]; }); }
+  function hablar(t){ try{ if(!window.speechSynthesis) return; speechSynthesis.cancel(); var u=new SpeechSynthesisUtterance(t); u.lang='es-AR'; u.rate=1.02; speechSynthesis.speak(u); }catch(e){} }
+  function panel(estado, texto, resp, mostrarEj){
+    var p=$('vozPanel'); if(!p) return; p.hidden=false; clearTimeout(tOcultar);
+    $('vozEstado').textContent = estado; $('vozTexto').textContent = texto||''; $('vozResp').textContent = resp||'';
+    $('vozEj').style.display = mostrarEj ? 'block' : 'none';
+    p.classList.toggle('vp-on', !!escuchando);
+  }
+  window.fvVozCerrarPanel = function(){ var p=$('vozPanel'); if(p) p.hidden=true; };
+  function ocultarLuego(ms){ clearTimeout(tOcultar); tOcultar=setTimeout(window.fvVozCerrarPanel, ms||7000); }
+  function responder(txt, abrir){ panel('Listo', window.__fvVozUltimo||'', txt, false); hablar(txt); ocultarLuego(8000); return true; }
+
+  function irA(tab){
+    if(typeof tabPermitida==='function' && !tabPermitida(tab)) return responder('No tenés acceso a esa pantalla.');
+    var b = Array.prototype.slice.call(document.querySelectorAll('.tab-btn')).filter(function(x){ return (x.getAttribute('onclick')||'').indexOf("setTab('"+tab+"'")>-1; })[0];
+    if(b) setTab(tab, b); return responder('Listo, '+({inicio:'Inicio',turnos:'Turnos',dashboard:'Dashboard',flota:'Flota',plan:'Plan PM'}[tab]||tab)+'.');
+  }
+  function candidatos(t){
+    var verbos = t.replace(/\b(abrir|abri|buscar|busca|busque|ficha|unidad|unidades|patente|interno|dominio|mostrar|mostrame|muestra|muestrame|ver|cuanto|cuantos|le|falta|faltan|km|kilometros|para|pm|estado|que|es|cuando|toca|servicio|camioneta|movil|del|de|la|el|los|las)\b/g,' ');
+    var todo = verbos.replace(/\ba\b/g,' ');
+    return [todo, verbos].map(function(x){ return numeros(x).replace(/[^a-z0-9]/g,'').toUpperCase(); }).filter(function(x,i,a){ return x.length>=2 && a.indexOf(x)===i; });
+  }
+  var buscando = false;
+  function buscarUnidad(q){
+    var L = (typeof FLOTA_VICUNA!=='undefined') ? FLOTA_VICUNA : [];
+    var n = function(x){ return String(x||'').replace(/[^a-z0-9]/gi,'').toUpperCase(); };
+    var ex = L.filter(function(v){ return n(v.patente)===q || n(v.previa)===q || n(v.interno)===q; });
+    if(ex.length) return ex;
+    if(q.length>=(buscando?2:3)) return L.filter(function(v){ return n(v.patente).indexOf(q)>-1 || n(v.interno).indexOf(q)>-1; });
+    return [];
+  }
+  function resolver(t){ var c=candidatos(t); for(var i=0;i<c.length;i++){ var r=buscarUnidad(c[i]); if(r.length) return {q:c[i], r:r}; } return {q:(c[0]||''), r:[]}; }
+  function datosPM(){ var d={vencidas:[],proximas:[]}; try{ d=fvInformePMDatos(); }catch(e){} return d; }
+  function respUnidadPM(v){
+    var p=null; try{ p=fvProximoPM(v.patente); }catch(e){}
+    var nom = v.patente + (v.interno ? ' (interno '+v.interno+')' : '');
+    if(!p) return nom+': todavía no tiene lectura de kilómetros.';
+    var f = Math.round(p.faltan), N=function(x){ return Number(x).toLocaleString('es-AR'); };
+    return f>0 ? nom+': faltan '+N(f)+' km para el próximo PM, a los '+N(p.km)+' km.' : nom+': tiene el PM pasado por '+N(Math.abs(f))+' km.';
+  }
+
+  window.fvVozEjecutar = function(texto){
+    window.__fvVozUltimo = texto; var t = norm(texto); if(!t) return false;
+    var soloLect = (typeof soloLectura==='function') && soloLectura();
+    // modo día / noche
+    if(/\b(modo|tema)\b/.test(t)){
+      if(/(noche|oscuro)/.test(t)) { fvTemaAplicar('dark'); return responder('Modo noche activado.'); }
+      if(/(dia|claro)/.test(t))    { fvTemaAplicar('light'); return responder('Modo día activado.'); }
+      fvTemaCambiar(); return responder('Cambié el modo.');
+    }
+    // nuevo turno
+    if(/(nuevo|agregar|cargar|crear|anotar) (un )?turno/.test(t)){
+      if(soloLect) return responder('Tu usuario es de solo lectura: no puede cargar turnos.');
+      var rr = resolver(t.replace(/(nuevo|agregar|cargar|crear|anotar) (un )?turno( para| de)?/,' '));
+      try{ openAdd(rr.r.length===1 ? rr.r[0].patente : undefined); }catch(e){ return responder('No pude abrir la carga de turno.'); }
+      return responder(rr.r.length===1 ? 'Nuevo turno para '+rr.r[0].patente+'.' : 'Abrí el formulario de nuevo turno.');
+    }
+    // contadores / informe PM
+    var d = datosPM();
+    var cumpl = (Array.isArray(events)?events:[]).filter(function(e){ return e.origenOT||e.cumplido; }).length;
+    if(/cumplid/.test(t) && /(turno|cuant)/.test(t)) return responder(cumpl===1 ? 'Hay 1 turno cumplido.' : 'Hay '+cumpl+' turnos cumplidos.');
+    if(/(pasad|vencid)/.test(t) && /(unidad|pm|cuant)/.test(t)){ try{ openInformePM(); }catch(e){} return responder(d.vencidas.length===1 ? 'Hay 1 unidad con el PM pasado.' : 'Hay '+d.vencidas.length+' unidades con el PM pasado.'); }
+    if(/(proxim|por vencer)/.test(t) && /(unidad|pm|cuant|vencer)/.test(t)){ try{ openInformePM(); }catch(e){} return responder((d.proximas.length===1 ? 'Hay 1 unidad próxima' : 'Hay '+d.proximas.length+' unidades próximas')+' a PM, a 200 kilómetros o menos.'); }
+    if(/informe pm/.test(t)){ try{ openInformePM(); }catch(e){} return responder('Informe PM: '+d.vencidas.length+' con PM pasado y '+d.proximas.length+' próximas.'); }
+    // pantallas
+    var m = t.match(/^(?:ir a |abrir |mostrar |mostrame |ver |anda a |llevame a )?(?:la |el )?(?:pantalla |pestana |solapa )?(?:de )?(inicio|turnos|dashboard|tablero|flota|plan pm|plan)$/);
+    if(m){ var k=m[1]; return irA(k==='tablero'?'dashboard':(k.indexOf('plan')===0?'plan':k)); }
+    // consultas y fichas de unidades
+    buscando = /\b(buscar|busca|busque)\b/.test(t);
+    var rU = resolver(t);
+    if(rU.r.length){
+      if(typeof tabPermitida==='function' && !tabPermitida('flota')) return responder('Tu usuario no tiene acceso a las fichas de unidades.');
+      if(/(falta|faltan|cuanto|cuando|toca|estado|km)/.test(t) && rU.r.length===1) return responder(respUnidadPM(rU.r[0]));
+      if(rU.r.length===1){ try{ otHistorial(rU.r[0].patente); }catch(e){} return responder('Ficha de '+rU.r[0].patente+(rU.r[0].interno?' (interno '+rU.r[0].interno+')':'')+'.'); }
+      irA('flota'); var inp=$('flotaBusq'); if(inp){ inp.value=rU.q; try{ actualizarFlotaLista(); }catch(e){} }
+      return responder('Encontré '+rU.r.length+' unidades con «'+rU.q+'». Te las muestro en Flota.');
+    }
+    if(buscando && rU.q){ irA('flota'); var inp2=$('flotaBusq'); if(inp2){ inp2.value=rU.q; try{ actualizarFlotaLista(); }catch(e){} } return responder('No hay unidades con «'+rU.q+'».'); }
+    var pidioUnidad = /(abrir|abri|buscar|busca|ficha|unidad|patente|interno|dominio|falta|faltan|estado)/.test(t);
+    panel('No encontré eso', texto, pidioUnidad ? 'No encontré esa unidad. Decí la patente o el interno, por ejemplo «abrir AG287TV».' : 'No entendí el comando.', true);
+    hablar(pidioUnidad ? 'No encontré esa unidad.' : 'No entendí el comando.'); ocultarLuego(9000); return false;
+  };
+
+  function fin(){ escuchando=false; var b=$('vozBtn'); if(b) b.classList.remove('voz-on'); }
+  window.fvVozToggle = function(){
+    if(escuchando){ try{ rec.stop(); }catch(e){} fin(); window.fvVozCerrarPanel(); return; }
+    if(!SR){ panel('Sin soporte', '', 'Este navegador no permite comando de voz. Usá Chrome o Edge (en el celular, Chrome).', false); ocultarLuego(8000); return; }
+    try{ speechSynthesis && speechSynthesis.cancel(); }catch(e){}
+    rec = new SR(); rec.lang='es-AR'; rec.interimResults=true; rec.continuous=false; rec.maxAlternatives=3;
+    var hecho=false;
+    rec.onstart = function(){ escuchando=true; var b=$('vozBtn'); if(b) b.classList.add('voz-on'); panel('Escuchando…','','',true); };
+    rec.onresult = function(ev){
+      var r = ev.results[ev.results.length-1]; var txt = r[0].transcript;
+      panel('Escuchando…', '“'+txt+'”', '', true);
+      if(r.isFinal && !hecho){ hecho=true;
+        var alts=[]; for(var i=0;i<r.length;i++) alts.push(r[i].transcript);
+        escuchando=false; var b=$('vozBtn'); if(b) b.classList.remove('voz-on');
+        var ok=false; for(var j=0;j<alts.length && !ok;j++){ ok = window.fvVozEjecutar(alts[j]); }
+        if(!ok) window.fvVozEjecutar(alts[0]);
+      }
+    };
+    rec.onerror = function(ev){
+      var e = ev && ev.error; fin();
+      var msg = e==='not-allowed'||e==='service-not-allowed' ? 'Permití el micrófono para esta página en el navegador.' : e==='no-speech' ? 'No te escuché. Tocá el botón y hablá de nuevo.' : e==='network' ? 'Sin internet: el comando de voz necesita conexión.' : e==='aborted' ? '' : 'No pude escuchar ('+e+').';
+      if(msg){ panel('Sin audio','',msg,false); ocultarLuego(7000); }
+    };
+    rec.onend = function(){ fin(); if(!hecho && $('vozEstado') && $('vozEstado').textContent==='Escuchando…') { panel('No te escuché','', 'Tocá el botón y hablá de nuevo.', false); ocultarLuego(5000); } };
+    try{ rec.start(); }catch(e){ fin(); panel('No pude iniciar','', 'Probá de nuevo en unos segundos.', false); ocultarLuego(5000); }
+  };
+})();
+</script>
+
 
 <!-- ADD OVERLAY -->
 <div class="overlay" id="addOverlay" onclick="closeAdd()"></div>
@@ -1250,7 +1393,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v93';
+const APP_VERSION = 'v94';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
