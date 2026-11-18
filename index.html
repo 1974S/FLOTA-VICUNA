@@ -967,7 +967,11 @@ function soloLectura(){
 // Si se lo quiere ocultar, cambiar a false.
 const VICUNA_VE_COSTOS = true;
 // Ocultar costos: siempre para el supervisor de Turnos; para Vicuña solo si VICUNA_VE_COSTOS=false
-function ocultarCostos(){ return esSupervisor() || (esSupervisorVicuna() && !VICUNA_VE_COSTOS); }
+// ¿Mostrar valores monetarios en la app? false = no se muestra ningún importe (pesos ni USD).
+// Los datos siguen guardados: poner true para volver a verlos.
+const MOSTRAR_VALORES = false;
+function ocultarCostosRol(){ return esSupervisor() || (esSupervisorVicuna() && !VICUNA_VE_COSTOS); }
+function ocultarCostos(){ return !MOSTRAR_VALORES || ocultarCostosRol(); }
 // Pestañas visibles por rol — null = todas (admin)
 const TABS_POR_ROL = {
   supervisor: ['turnos'],
@@ -1109,7 +1113,7 @@ const FLOTA_VICUNA = [
   {patente:"AI359PR", interno:"", vehiculo:"TOYOTA HILUX L/24 2.8 DC 4X4 TDI SR AT6", año:2026, area:""}
 ];
 // Encabezado: la cantidad de unidades sale de la lista real de la flota (no se escribe a mano)
-const APP_VERSION = 'v87';
+const APP_VERSION = 'v88';
 (function(){ const el = document.getElementById('brandSub'); if (el) el.textContent = 'Proyecto Vicuña · Flota ' + FLOTA_VICUNA.length + ' unidades · ' + APP_VERSION; })();
 
 
@@ -1372,7 +1376,7 @@ function renderInicio(c) {
   }
 
   html += `</div>`;
-  html += ((typeof otRenderGraficos==='function' && !(typeof ocultarCostos==='function' && ocultarCostos())) ? otRenderGraficos() : '');
+  html += ((typeof otRenderGraficos==='function' && !(typeof ocultarCostosRol==='function' && ocultarCostosRol())) ? otRenderGraficos() : '');
   c.innerHTML = html;
   bindCards(c);
   c.querySelector('#mc-prev')?.addEventListener('click', () => { vDate = new Date(vDate.getFullYear(), vDate.getMonth()-1, 1); render(); });
@@ -1443,8 +1447,8 @@ function renderTurnos(c) {
       <button onclick="convertirPM10aPM5()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🔄 Convertir PM 10.000 km → PM 5.000 km</button>
       <button onclick="corregirFechasOT2020()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🛠️ Corregir OT importadas con fecha en 2020</button>
       <button onclick="limpiarDuplicadosOT()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">🧹 Eliminar órdenes de trabajo duplicadas</button>
-      <button onclick="openPresupuestoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💰 Generar presupuesto</button>
-      <button onclick="openRemitoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📦 Generar remito</button>
+      ${MOSTRAR_VALORES ? `<button onclick="openPresupuestoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💰 Generar presupuesto</button>` : ''}
+      ${MOSTRAR_VALORES ? `<button onclick="openRemitoModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">📦 Generar remito</button>` : ''}
       <button onclick="openInformeModal()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;">📊 Generar informe Excel</button>
       ` : ''}
     </div>
@@ -1708,16 +1712,16 @@ function renderPlan(c) {
       <button onclick="toggleEditMode()" style="flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--border);background:${editMode?'var(--red)':'var(--card)'};color:${editMode?'#fff':'var(--text)'};font-weight:600;font-size:12.5px;">${editMode ? '✓ Modo edición activo' : '✏️ Editar tareas'}</button>
       <button onclick="addTask()" style="padding:9px 14px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:12.5px;">+ Tarea</button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
+    ${MOSTRAR_VALORES ? `<div style="display:flex;gap:8px;margin-bottom:12px;">
       <label style="flex:1;padding:9px;border-radius:10px;border:1.5px dashed var(--border);background:var(--card);color:var(--text2);font-weight:600;font-size:12px;text-align:center;cursor:pointer;">
         📂 Importar lista de repuestos (Excel)
         <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importRepuestos(event)">
       </label>
-    </div>`}
-    <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+    </div>` : ''}`}
+    ${ocultarCostos() ? '' : `<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-s);padding:10px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
       <span style="font-size:12.5px;color:var(--text2);">Costo total estimado del PM</span>
-      ${(typeof ocultarCostos==='function' && ocultarCostos()) ? '' : `<span style="font-size:16px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>`}
-    </div>
+      <span style="font-size:16px;font-weight:700;color:var(--red);">$ ${totalCosto.toLocaleString('es-AR')}</span>
+    </div>`}
     <div class="plan-card">`;
 
   data.forEach(t => {
@@ -1784,7 +1788,7 @@ function editTask(id) {
 
 function openTaskModal(t) {
   const repOptions = repuestosData.map(r =>
-    `<option value="${r.id}">${r.desc} — $${r.precio.toLocaleString('es-AR')}</option>`
+    `<option value="${r.id}">${r.desc}${ocultarCostos() ? '' : ' — $' + r.precio.toLocaleString('es-AR')}</option>`
   ).join('');
   const repChips = (t.repuestos || []).map(rid => {
     const r = repuestosData.find(x => x.id === rid);
@@ -1803,7 +1807,7 @@ function openTaskModal(t) {
       <div class="fg"><label class="fl">Sistema / Ítem *</label><input class="fi" id="tSys" value="${(t.sys||'').replace(/"/g,'&quot;')}"></div>
       <div class="fg"><label class="fl">Frecuencia / patrón</label><input class="fi" id="tFreq" value="${(t.freq||'').replace(/"/g,'&quot;')}"></div>
       <div class="frow2">
-        <div class="fg"><label class="fl">Costo estimado (ARS)</label><input class="fi" type="number" id="tCosto" value="${t.costo||0}"></div>
+        ${ocultarCostos() ? `<input type="hidden" id="tCosto" value="${t.costo||0}">` : `<div class="fg"><label class="fl">Costo estimado (ARS)</label><input class="fi" type="number" id="tCosto" value="${t.costo||0}"></div>`}
         <div class="fg"><label class="fl">Tiempo estimado</label><input class="fi" id="tTiempo" placeholder="ej: 45 min" value="${(t.tiempo||'').replace(/"/g,'&quot;')}"></div>
       </div>
       <div class="fg">
@@ -1933,6 +1937,7 @@ function _leerListaRepuestos(wb){
   return null;
 }
 function importRepuestos(event) {
+  if(!MOSTRAR_VALORES) return;
   const input = event.target;
   const file = input.files[0];
   if (!file) return;
@@ -2418,7 +2423,7 @@ function generarInforme() {
       'Diferencia km': e.kmA - e.kmU,
       'Tareas completadas': `${tareasCompletas}/${totalTareas}`,
       'Repuestos utilizados': repNombres,
-      'Costo total estimado ($)': costoTotal,
+      ...(ocultarCostos() ? {} : {'Costo total estimado ($)': costoTotal}),
       'Observaciones': e.obs || ''
     };
   });
@@ -2441,7 +2446,7 @@ function generarInforme() {
           'PN SAP': r ? r.pnSap : '',
           'PN Fabricante': r ? r.pnFab : '',
           'Repuesto': r ? r.desc : rid,
-          'Precio unitario ($)': r ? r.precio : 0,
+          ...(ocultarCostos() ? {} : {'Precio unitario ($)': r ? r.precio : 0}),
           'Completada': t.done ? 'Sí' : 'No'
         });
       });
@@ -2915,6 +2920,7 @@ function importarTurnosExcel(file){
 
 /* ---------- Estado de Pago (Anexo E-2) — reemplaza siempre el anterior ---------- */
 function importarEstadoPago(file){
+  if(!MOSTRAR_VALORES) return;
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
@@ -3273,6 +3279,7 @@ function onPresDomInput(val){
 }
 
 function openPresupuestoModal(){
+  if(!MOSTRAR_VALORES) return;
   const today = new Date().toISOString().slice(0,10);
   presItems = [{desc:'', cant:1, precio:0}];
   const modal = document.createElement('div');
@@ -3504,6 +3511,7 @@ function onRemDomInput(val){
 }
 
 function openRemitoModal(){
+  if(!MOSTRAR_VALORES) return;
   const today = new Date().toISOString().slice(0,10);
   remItems = [{desc:'', cant:1, precio:0}];
   const modal = document.createElement('div');
@@ -3797,7 +3805,7 @@ function otRenderPreview(){
           <span style="font-size:11px;color:var(--text3);margin-left:auto;">OT ${o.nro||'?'} · ${o.fecha||'?'}</span>
         </div>
         <div style="font-size:12px;color:var(--text2);margin-top:4px;">
-          Km ${o.km_efectivo?.toLocaleString('es-AR')||'?'} · ${nrep} repuesto${nrep!==1?'s':''} · ${ntr} trabajo${ntr!==1?'s':''} · Total USD ${(o.total_usd||0).toLocaleString('es-AR')}
+          Km ${o.km_efectivo?.toLocaleString('es-AR')||'?'} · ${nrep} repuesto${nrep!==1?'s':''} · ${ntr} trabajo${ntr!==1?'s':''}${ocultarCostos() ? '' : ' · Total USD ' + (o.total_usd||0).toLocaleString('es-AR')}
         </div>
       </div>`;
   });
@@ -3877,12 +3885,12 @@ function otHistorial(patente){
     rows=`<div style="display:flex;gap:8px;margin-bottom:12px;">
         <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:700;">${hist.length}</div><div style="font-size:11px;color:var(--text3);">Intervenciones</div></div>
         <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:700;">${totRep}</div><div style="font-size:11px;color:var(--text3);">Repuestos</div></div>
-        <div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:700;">${totUsd.toLocaleString('es-AR')}</div><div style="font-size:11px;color:var(--text3);">USD total</div></div>
+        ${ocultarCostos() ? '' : `<div style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:18px;font-weight:700;">${totUsd.toLocaleString('es-AR')}</div><div style="font-size:11px;color:var(--text3);">USD total</div></div>`}
       </div>`;
     hist.forEach(o=>{
       const tipoColor=o.tipo==='PM'?'#34C759':(o.tipo==='Correctivo'?'#FF9500':'#8E8E93');
-      const reps=(o.repuestos||[]).map(r=>`<div style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0;"><span>${r.cant}× ${r.desc}</span><span style="color:var(--text3);">USD ${(r.usd||0).toLocaleString('es-AR')}</span></div>`).join('');
-      const trabs=(o.trabajos||[]).map(t=>`<div style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0;"><span>🔧 ${t.desc}</span><span style="color:var(--text3);">USD ${(t.usd||0).toLocaleString('es-AR')}</span></div>`).join('');
+      const reps=(o.repuestos||[]).map(r=>`<div style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0;"><span>${r.cant}× ${r.desc}</span>${ocultarCostos() ? '' : `<span style="color:var(--text3);">USD ${(r.usd||0).toLocaleString('es-AR')}</span>`}</div>`).join('');
+      const trabs=(o.trabajos||[]).map(t=>`<div style="font-size:12px;color:var(--text2);display:flex;justify-content:space-between;padding:2px 0;"><span>🔧 ${t.desc}</span>${ocultarCostos() ? '' : `<span style="color:var(--text3);">USD ${(t.usd||0).toLocaleString('es-AR')}</span>`}</div>`).join('');
       rows+=`
         <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -3891,7 +3899,7 @@ function otHistorial(patente){
             <span style="font-size:11px;color:var(--text3);margin-left:auto;">${otFechaMostrar(o)} · OT ${o.nro||''}</span>
           </div>
           ${reps}${trabs}
-          <div style="font-size:12px;font-weight:700;text-align:right;margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">Total: USD ${(o.total_usd||0).toLocaleString('es-AR')}</div>
+          ${ocultarCostos() ? '' : `<div style="font-size:12px;font-weight:700;text-align:right;margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">Total: USD ${(o.total_usd||0).toLocaleString('es-AR')}</div>`}
         </div>`;
     });
   }
@@ -4496,7 +4504,7 @@ function otRenderGraficos(){
     <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
       <div style="font-size:13px;font-weight:700;margin-bottom:10px;">${titulo}</div>${contenido}</div>`;
 
-  const g1=topRep.map(([d,c])=>bar(d,c,maxRep,'#5856D6',`${c} u · USD ${(repUsd[d]||0).toLocaleString('es-AR')}`)).join('');
+  const g1=topRep.map(([d,c])=>bar(d,c,maxRep,'#5856D6',ocultarCostos() ? `${c} u` : `${c} u · USD ${(repUsd[d]||0).toLocaleString('es-AR')}`)).join('');
   const totInt=tipoCnt.PM+tipoCnt.Correctivo+tipoCnt.Otro;
   const g2=`<div style="display:flex;gap:8px;">
       <div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:700;color:#34C759;">${tipoCnt.PM}</div><div style="font-size:11px;color:var(--text3);">PM</div></div>
@@ -4510,8 +4518,8 @@ function otRenderGraficos(){
     <div class="sec-hdr" style="margin:6px 0 10px;">Análisis de mantenimiento</div>
     ${card('🔩 Repuestos más consumidos', g1)}
     ${card('🛠️ Intervenciones por tipo ('+totInt+')', g2)}
-    ${card('💵 Costo por período', g3||'<div style="font-size:12px;color:var(--text3);">Sin datos de fecha</div>')}
-    ${card('🚚 Ranking de unidades por gasto', g4)}
+    ${ocultarCostos() ? '' : card('💵 Costo por período', g3||'<div style="font-size:12px;color:var(--text3);">Sin datos de fecha</div>')}
+    ${ocultarCostos() ? '' : card('🚚 Ranking de unidades por gasto', g4)}
   </div>`;
 }
 
@@ -4699,12 +4707,13 @@ function renderDashboard(c) {
 
   // ---- Consumo del contrato (cargado a mano desde el Anexo E-2 / Estado de Pago) ----
   if (typeof esAdmin==='function' && esAdmin()) {
-    html += `<button onclick="document.getElementById('inputEstadoPago').click()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💼 Cargar Estado de Pago (Excel)</button>
-    <input type="file" id="inputEstadoPago" accept=".xlsx,.xls" style="display:none;" onchange="importarEstadoPago(this.files[0])">
+    if (MOSTRAR_VALORES) html += `<button onclick="document.getElementById('inputEstadoPago').click()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:8px;">💼 Cargar Estado de Pago (Excel)</button>
+    <input type="file" id="inputEstadoPago" accept=".xlsx,.xls" style="display:none;" onchange="importarEstadoPago(this.files[0])">`;
+    html += `
     <button onclick="document.getElementById('inputRosterRep').click()" style="width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text);font-weight:600;font-size:13px;margin-bottom:10px;">🔧 Cargar roster de reparaciones (Excel)</button>
     <input type="file" id="inputRosterRep" accept=".xlsx,.xls" style="display:none;" onchange="importarRosterReparaciones(this.files[0])">`;
   }
-  if (estadoPagoData) {
+  if (estadoPagoData && MOSTRAR_VALORES) {
     const ep = estadoPagoData;
     const pct = (ep.pctConsumidoTotal||0)*100;
     const epColor = pct<80 ? '#34C759' : (pct<95 ? '#FF9500' : '#FF3B30');
@@ -5147,7 +5156,7 @@ function renderDashboard(c) {
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;">${nUnid}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">Unidades</div></div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;text-align:center;"><div style="font-size:22px;font-weight:800;">${repTotal}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">Repuestos</div></div>
   </div>`;
-  html += `<div style="background:linear-gradient(135deg,#1E90FF,#0B3B8C);box-shadow:0 0 22px rgba(30,144,255,.35);border-radius:14px;padding:16px;margin-bottom:12px;color:#fff;">
+  if (!ocultarCostos()) html += `<div style="background:linear-gradient(135deg,#1E90FF,#0B3B8C);box-shadow:0 0 22px rgba(30,144,255,.35);border-radius:14px;padding:16px;margin-bottom:12px;color:#fff;">
     <div style="font-size:12px;opacity:.85;letter-spacing:.04em;">COSTO TOTAL DE MANTENIMIENTO</div>
     <div style="font-size:28px;font-weight:800;margin-top:4px;">USD ${costoTotal.toLocaleString('es-AR',{maximumFractionDigits:0})}</div>
     <div style="font-size:11px;opacity:.75;margin-top:2px;">Acumulado de todas las OT importadas</div>
@@ -5277,6 +5286,7 @@ function generarInformePDF(){
       ['Servicios PM', String(D.pmCount)],
       ['Correctivos', String(D.corrCount)]
     ];
+    if(ocultarCostos()){ const k=cards.findIndex(c=>c[0]==='Costo total (USD)'); if(k>=0) cards.splice(k,1); }
     const cw=(W-2*M-2*6)/3, ch=22; let cx=M, cy=y;
     cards.forEach((c,i)=>{
       const col=i%3, row=Math.floor(i/3);
@@ -5307,13 +5317,14 @@ function generarInformePDF(){
     doc.text('Análisis de consumo', M, y); y+=8;
     doc.setFontSize(11); doc.text('Repuestos más consumidos', M, y);
     doc.autoTable({ startY:y+2, margin:{left:M,right:M},
-      head:[['Repuesto','Cantidad','Costo USD']],
-      body:D.topRep.map(r=>[r.desc, String(r.cant), r.usd.toLocaleString('es-AR',{maximumFractionDigits:0})]),
+      head:[ocultarCostos() ? ['Repuesto','Cantidad'] : ['Repuesto','Cantidad','Costo USD']],
+      body:D.topRep.map(r=> ocultarCostos() ? [r.desc, String(r.cant)] : [r.desc, String(r.cant), r.usd.toLocaleString('es-AR',{maximumFractionDigits:0})]),
       theme:'striped', headStyles:{fillColor:[204,0,0],fontSize:9}, bodyStyles:{fontSize:8.5},
       columnStyles:{1:{halign:'right',cellWidth:24},2:{halign:'right',cellWidth:28}} });
     y = doc.lastAutoTable.finalY + 10;
 
     // ---- Ranking de unidades ----
+    if(!ocultarCostos()){
     doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(30,30,30);
     doc.text('Ranking de unidades por gasto', M, y);
     doc.autoTable({ startY:y+2, margin:{left:M,right:M},
@@ -5333,6 +5344,7 @@ function generarInformePDF(){
         theme:'striped', headStyles:{fillColor:[204,0,0],fontSize:9}, bodyStyles:{fontSize:9},
         columnStyles:{1:{halign:'right',cellWidth:40}} });
     }
+    }
 
     // ---- Detalle por unidad ----
     doc.addPage(); y=M+4;
@@ -5345,14 +5357,16 @@ function generarInformePDF(){
       doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(255,255,255);
       doc.text(pat+'  ·  '+(arr[0]?.modelo||''), M+3, y+5.5); y+=12;
       arr.forEach(o=>{
+        const SV = ocultarCostos();
         const body = [];
-        (o.repuestos||[]).forEach(r=> body.push([r.cant+'× '+r.desc, r.usd? ('USD '+r.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'']));
-        (o.trabajos||[]).forEach(t=> body.push(['(MO) '+t.desc, t.usd? ('USD '+t.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'']));
+        (o.repuestos||[]).forEach(r=> body.push(SV ? [r.cant+'× '+r.desc] : [r.cant+'× '+r.desc, r.usd? ('USD '+r.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'']));
+        (o.trabajos||[]).forEach(t=> body.push(SV ? ['(MO) '+t.desc] : ['(MO) '+t.desc, t.usd? ('USD '+t.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'']));
+        const tituloOT = `OT ${o.nro||''} · ${o.fecha||''} · ${(o.km_efectivo||0).toLocaleString('es-AR')} km · ${o.tipo||''}`;
         doc.autoTable({ startY:y, margin:{left:M,right:M},
-          head:[[`OT ${o.nro||''} · ${o.fecha||''} · ${(o.km_efectivo||0).toLocaleString('es-AR')} km · ${o.tipo||''}`, fmtUSD(o.total_usd)]],
-          body: body.length?body:[['Sin ítems detallados','']],
+          head:[SV ? [tituloOT] : [tituloOT, fmtUSD(o.total_usd)]],
+          body: body.length?body:(SV ? [['Sin ítems detallados']] : [['Sin ítems detallados','']]),
           theme:'grid', headStyles:{fillColor:[70,70,70],fontSize:8.5,textColor:[255,255,255]}, bodyStyles:{fontSize:8},
-          columnStyles:{1:{halign:'right',cellWidth:32}} });
+          columnStyles: SV ? {} : {1:{halign:'right',cellWidth:32}} });
         y = doc.lastAutoTable.finalY + 4;
         if(y > 265){ doc.addPage(); y=M+4; }
       });
@@ -5418,7 +5432,7 @@ function generarInformeWord(){
         ['Servicios de mantenimiento preventivo (PM)', D.pmCount],
         ['Intervenciones correctivas', D.corrCount],
         ['Costo total de mantenimiento', fmtUSD(D.costoTotal)]
-      ].map(r=> new TableRow({children:[cell(r[0],{w:60}), cell(r[1],{w:40,align:AlignmentType.RIGHT})]}))
+      ].filter(r=> !(ocultarCostos() && r[0]==='Costo total de mantenimiento')).map(r=> new TableRow({children:[cell(r[0],{w:60}), cell(r[1],{w:40,align:AlignmentType.RIGHT})]}))
     ));
 
     // ---- Turnos por área ----
@@ -5433,16 +5447,20 @@ function generarInformeWord(){
     // ---- Repuestos más consumidos ----
     children.push(H('Repuestos más consumidos'));
     children.push(tbl(
-      [cell('Repuesto',{head:true,w:60}), cell('Cant.',{head:true,w:18,align:AlignmentType.RIGHT}), cell('Costo USD',{head:true,w:22,align:AlignmentType.RIGHT})],
-      D.topRep.map(r=> new TableRow({children:[cell(r.desc,{w:60,size:16}), cell(r.cant,{w:18,align:AlignmentType.RIGHT}), cell(r.usd.toLocaleString('es-AR',{maximumFractionDigits:0}),{w:22,align:AlignmentType.RIGHT})]}))
+      ocultarCostos() ? [cell('Repuesto',{head:true,w:78}), cell('Cant.',{head:true,w:22,align:AlignmentType.RIGHT})]
+                      : [cell('Repuesto',{head:true,w:60}), cell('Cant.',{head:true,w:18,align:AlignmentType.RIGHT}), cell('Costo USD',{head:true,w:22,align:AlignmentType.RIGHT})],
+      D.topRep.map(r=> ocultarCostos() ? new TableRow({children:[cell(r.desc,{w:78,size:16}), cell(r.cant,{w:22,align:AlignmentType.RIGHT})]})
+                                       : new TableRow({children:[cell(r.desc,{w:60,size:16}), cell(r.cant,{w:18,align:AlignmentType.RIGHT}), cell(r.usd.toLocaleString('es-AR',{maximumFractionDigits:0}),{w:22,align:AlignmentType.RIGHT})]}))
     ));
 
     // ---- Ranking de unidades ----
+    if(!ocultarCostos()){
     children.push(H('Ranking de unidades por gasto'));
     children.push(tbl(
       [cell('Patente',{head:true,w:40}), cell('Interv.',{head:true,w:30,align:AlignmentType.RIGHT}), cell('Costo USD',{head:true,w:30,align:AlignmentType.RIGHT})],
       D.ranking.map(r=> new TableRow({children:[cell(r.patente,{w:40}), cell(r.int,{w:30,align:AlignmentType.RIGHT}), cell(r.usd.toLocaleString('es-AR',{maximumFractionDigits:0}),{w:30,align:AlignmentType.RIGHT})]}))
     ));
+    }
 
     // ---- Detalle por unidad ----
     children.push(H('Detalle por unidad'));
@@ -5450,10 +5468,11 @@ function generarInformeWord(){
       const arr = D.ot[pat].slice().sort((a,b)=>(a.km_efectivo||0)-(b.km_efectivo||0));
       children.push(new Paragraph({ children:[new TextRun({text:pat+'  ·  '+(arr[0]?.modelo||''), bold:true, color:'FFFFFF', size:22})], shading:{fill:RED,type:ShadingType.CLEAR,color:'auto'}, spacing:{before:200,after:80} }));
       arr.forEach(o=>{
-        children.push(new Paragraph({ children:[new TextRun({text:`OT ${o.nro||''} · ${o.fecha||''} · ${(o.km_efectivo||0).toLocaleString('es-AR')} km · ${o.tipo||''} · Total ${fmtUSD(o.total_usd)}`, bold:true, size:18, color:GRAY})], spacing:{before:80,after:40} }));
+        children.push(new Paragraph({ children:[new TextRun({text:`OT ${o.nro||''} · ${o.fecha||''} · ${(o.km_efectivo||0).toLocaleString('es-AR')} km · ${o.tipo||''}${ocultarCostos() ? '' : ' · Total ' + fmtUSD(o.total_usd)}`, bold:true, size:18, color:GRAY})], spacing:{before:80,after:40} }));
         const rows=[];
-        (o.repuestos||[]).forEach(r=> rows.push(new TableRow({children:[cell(r.cant+'× '+r.desc,{w:75,size:16}), cell(r.usd?('USD '+r.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'',{w:25,align:AlignmentType.RIGHT,size:16})]})));
-        (o.trabajos||[]).forEach(t=> rows.push(new TableRow({children:[cell('(MO) '+t.desc,{w:75,size:16}), cell(t.usd?('USD '+t.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'',{w:25,align:AlignmentType.RIGHT,size:16})]})));
+        const SV = ocultarCostos();
+        (o.repuestos||[]).forEach(r=> rows.push(new TableRow({children: SV ? [cell(r.cant+'× '+r.desc,{w:100,size:16})] : [cell(r.cant+'× '+r.desc,{w:75,size:16}), cell(r.usd?('USD '+r.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'',{w:25,align:AlignmentType.RIGHT,size:16})]})));
+        (o.trabajos||[]).forEach(t=> rows.push(new TableRow({children: SV ? [cell('(MO) '+t.desc,{w:100,size:16})] : [cell('(MO) '+t.desc,{w:75,size:16}), cell(t.usd?('USD '+t.usd.toLocaleString('es-AR',{maximumFractionDigits:0})):'',{w:25,align:AlignmentType.RIGHT,size:16})]})));
         if(rows.length) children.push(new Table({width:{size:100,type:WidthType.PERCENTAGE}, rows}));
       });
     });
